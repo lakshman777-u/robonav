@@ -3,9 +3,87 @@ import {
   RotateCcw, Volume2, VolumeX, Flag, Zap, 
   ArrowLeft, ArrowRight, Home, 
   AlertTriangle, Sofa, Bed, Utensils, Laptop, 
-  Eye, Layers, Trees, ShieldAlert, Sparkles, Navigation
+  Eye, Layers, Trees, ShieldAlert, Navigation, Sparkles, Crosshair
 } from 'lucide-react';
 import { useCarTrim, CarTrim } from '../context/CarTrimContext';
+
+// Wall Segments for Raycasting & Physical Avoidance
+export interface WallSegment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+export const HOUSE_WALLS: WallSegment[] = [
+  // Outer perimeter boundary walls
+  { x1: 20, y1: 20, x2: 900, y2: 20 },
+  { x1: 900, y1: 20, x2: 900, y2: 540 },
+  { x1: 900, y1: 540, x2: 20, y2: 540 },
+  { x1: 20, y1: 540, x2: 20, y2: 20 },
+
+  // Left vertical partition wall (x = 330) with doorway gaps at 170-250 and 330-410
+  { x1: 330, y1: 20, x2: 330, y2: 170 },
+  { x1: 330, y1: 250, x2: 330, y2: 330 },
+  { x1: 330, y1: 410, x2: 330, y2: 540 },
+
+  // Right vertical partition wall (x = 590) with doorway gaps at 170-250 and 330-410
+  { x1: 590, y1: 20, x2: 590, y2: 170 },
+  { x1: 590, y1: 250, x2: 590, y2: 330 },
+  { x1: 590, y1: 410, x2: 590, y2: 540 },
+
+  // Horizontal wall left (y = 280) with doorway gap at 130-210
+  { x1: 20, y1: 280, x2: 130, y2: 280 },
+  { x1: 210, y1: 280, x2: 330, y2: 280 },
+
+  // Horizontal wall right (y = 280) with doorway gap at 710-790
+  { x1: 590, y1: 280, x2: 710, y2: 280 },
+  { x1: 790, y1: 280, x2: 900, y2: 280 },
+
+  // Garden glass wall partition (y = 150) with center sliding door gap at 410-510
+  { x1: 330, y1: 150, x2: 410, y2: 150 },
+  { x1: 510, y1: 150, x2: 590, y2: 150 }
+];
+
+// Helper: Ray to Line Segment intersection
+function getRayLineIntersection(
+  rx: number, ry: number, dx: number, dy: number,
+  x1: number, y1: number, x2: number, y2: number
+): number | null {
+  const wx = x2 - x1;
+  const wy = y2 - y1;
+  const denom = dx * wy - dy * wx;
+  if (Math.abs(denom) < 1e-6) return null;
+
+  const t = ((x1 - rx) * wy - (y1 - ry) * wx) / denom;
+  const u = ((x1 - rx) * dy - (y1 - ry) * dx) / denom;
+
+  if (t > 0 && u >= 0 && u <= 1) {
+    return t;
+  }
+  return null;
+}
+
+// Helper: Point projection on line segment for smooth wall buffer
+function projectPointOnSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return { x: x1, y: y1, dist: Math.hypot(px - x1, py - y1), nx: 0, ny: 0 };
+  
+  let u = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  u = Math.max(0, Math.min(1, u));
+  const projX = x1 + u * dx;
+  const projY = y1 + u * dy;
+  const dist = Math.hypot(px - projX, py - projY);
+  return { 
+    x: projX, 
+    y: projY, 
+    dist, 
+    nx: dist > 0 ? (px - projX) / dist : 0, 
+    ny: dist > 0 ? (py - projY) / dist : 0 
+  };
+}
 
 // Spacious 5+ Room Destinations with Outdoor Zen Garden & Corridor
 export interface RoomDestination {
@@ -73,7 +151,7 @@ export const HOUSE_ROOMS: RoomDestination[] = [
     y: 90, 
     color: '#22c55e', 
     description: 'Emerald lawn, stone walkway, outdoor teak lounge & trees',
-    doorwayNode: { x: 460, y: 170 },
+    doorwayNode: { x: 460, y: 175 },
     icon: 'trees'
   },
   { 
@@ -139,17 +217,16 @@ export const PaganiSimulatorGame = () => {
     angle: -Math.PI / 2, // Facing north towards garden & corridor
     speed: 0,
     steerAngle: 0,
-    maxSpeed: 5.5,
-    accel: 0.15,
+    maxSpeed: 5.2,
+    accel: 0.14,
     friction: 0.95,
-    brakeForce: 0.38,
+    brakeForce: 0.40,
     battery: 98,
     isBraking: false,
     isAccelerating: false,
     skidMarks: [] as { x: number; y: number; alpha: number }[],
     particles: [] as { x: number; y: number; vx: number; vy: number; life: number; color: string }[],
-    // Sensor rays for LiDAR
-    lidarRays: [] as { startX: number; startY: number; endX: number; endY: number; hit: boolean; dist: number }[]
+    lidarRays: [] as { startX: number; startY: number; endX: number; endY: number; hit: boolean; dist: number; isWall: boolean }[]
   });
 
   // Dynamic Moving Obstacles
@@ -220,8 +297,8 @@ export const PaganiSimulatorGame = () => {
     }
   ]);
 
-  // Autopilot Waypoint Path State
-  const autopilotStageRef = useRef<'doorway' | 'destination'>('doorway');
+  // Multi-Node Global Waypoint Route Planner
+  const waypointQueueRef = useRef<{ x: number; y: number }[]>([]);
   const [navStatus, setNavStatus] = useState<string>('IDLE');
   const [proximityAlert, setProximityAlert] = useState<string | null>(null);
 
@@ -304,7 +381,80 @@ export const PaganiSimulatorGame = () => {
     }
   };
 
-  // 60 FPS Physics, Autonomous Obstacle Avoidance & Simulation Loop
+  // Helper: Plan safe global route through doorway hubs without crossing walls
+  const planRouteThroughCorridors = (currX: number, currY: number, dest: RoomDestination) => {
+    const route: { x: number; y: number }[] = [];
+
+    // Step 1: Detect current zone and exit through appropriate doorway into corridor
+    if (currX < 330) {
+      // In West Wing (Living Room or Kitchen)
+      if (currY < 280) {
+        // Living room -> exit door
+        route.push({ x: 350, y: 210 });
+      } else {
+        // Kitchen -> exit door
+        route.push({ x: 350, y: 370 });
+      }
+    } else if (currX > 590) {
+      // In East Wing (Bedroom or Office)
+      if (currY < 280) {
+        // Bedroom -> exit door
+        route.push({ x: 570, y: 210 });
+      } else {
+        // Office -> exit door
+        route.push({ x: 570, y: 370 });
+      }
+    } else if (currY < 150) {
+      // In Zen Garden -> exit through glass door
+      route.push({ x: 460, y: 175 });
+    }
+
+    // Step 2: Corridor highway transitions
+    if (dest.id === 5) {
+      // Destination is Zen Garden
+      route.push({ x: 460, y: 210 });
+      route.push({ x: 460, y: 175 });
+    } else if (dest.id === 1) {
+      // Destination is Living Room
+      route.push({ x: 460, y: 210 });
+      route.push({ x: 350, y: 210 });
+    } else if (dest.id === 2) {
+      // Destination is Master Bedroom
+      route.push({ x: 460, y: 210 });
+      route.push({ x: 570, y: 210 });
+    } else if (dest.id === 3) {
+      // Destination is Kitchen
+      route.push({ x: 460, y: 370 });
+      route.push({ x: 350, y: 370 });
+    } else if (dest.id === 4) {
+      // Destination is Tech Office
+      route.push({ x: 460, y: 370 });
+      route.push({ x: 570, y: 370 });
+    } else {
+      // Destination is Garage Dock (460, 310)
+      route.push({ x: 460, y: 310 });
+    }
+
+    // Step 3: Final destination center
+    route.push({ x: dest.x, y: dest.y });
+
+    // Clean duplicate consecutive nodes
+    const cleanedRoute: { x: number; y: number }[] = [];
+    for (const pt of route) {
+      if (cleanedRoute.length === 0) {
+        cleanedRoute.push(pt);
+      } else {
+        const last = cleanedRoute[cleanedRoute.length - 1];
+        if (Math.hypot(pt.x - last.x, pt.y - last.y) > 20) {
+          cleanedRoute.push(pt);
+        }
+      }
+    }
+
+    return cleanedRoute;
+  };
+
+  // 60 FPS Physics, Autonomous Obstacle & Wall Avoidance Loop
   useEffect(() => {
     let animId: number;
     let distCounter = distanceDriven;
@@ -329,48 +479,68 @@ export const PaganiSimulatorGame = () => {
         });
       }
 
-      // 2. FORWARD SENSOR SCAN (LiDAR / ULTRASONIC RAYS)
-      // Project 9 sensor rays forward to detect obstacles in vehicle trajectory
+      // 2. FORWARD SENSOR SCAN (LiDAR / ULTRASONIC RAYS - DETECTS BOTH WALLS & OBSTACLES)
       const rays: typeof car.lidarRays = [];
       const numRays = 9;
       const rayMaxDist = 110;
       let obstacleDetectedInCone = false;
-      let nearestObsDist = 999;
+      let wallDetectedInCone = false;
+      let nearestDetectionDist = 999;
       let detectedObstacle: MovingObstacle | null = null;
-      let lateralClearance = 0; // Negative for steer left, positive for steer right
+      let lateralClearance = 0; // Negative = steer left, Positive = steer right
 
       const baseAngle = car.angle;
       const angleOffsets = [-0.55, -0.38, -0.22, -0.10, 0, 0.10, 0.22, 0.38, 0.55];
 
+      const startX = car.x + Math.cos(car.angle) * 16;
+      const startY = car.y + Math.sin(car.angle) * 16;
+
       for (let i = 0; i < numRays; i++) {
         const rayAngle = baseAngle + angleOffsets[i];
+        const rayDirX = Math.cos(rayAngle);
+        const rayDirY = Math.sin(rayAngle);
         let rayDist = rayMaxDist;
         let hasHit = false;
+        let isWallHit = false;
 
-        const startX = car.x + Math.cos(car.angle) * 16;
-        const startY = car.y + Math.sin(car.angle) * 16;
+        // Check intersection with all house walls
+        for (const wall of HOUSE_WALLS) {
+          const hitDist = getRayLineIntersection(
+            startX, startY, rayDirX * rayMaxDist, rayDirY * rayMaxDist,
+            wall.x1, wall.y1, wall.x2, wall.y2
+          );
+          if (hitDist !== null && hitDist * rayMaxDist < rayDist) {
+            rayDist = hitDist * rayMaxDist;
+            hasHit = true;
+            isWallHit = true;
+            wallDetectedInCone = true;
+            if (rayDist < nearestDetectionDist) {
+              nearestDetectionDist = rayDist;
+              lateralClearance = angleOffsets[i] >= 0 ? -1 : 1;
+            }
+          }
+        }
 
         // Check intersection with moving obstacles
         if (showObstacles) {
           for (const obs of obstaclesRef.current) {
-            // Distance from obstacle center to ray line
             const toObsX = obs.x - startX;
             const toObsY = obs.y - startY;
-            const proj = toObsX * Math.cos(rayAngle) + toObsY * Math.sin(rayAngle);
+            const proj = toObsX * rayDirX + toObsY * rayDirY;
 
             if (proj > 0 && proj < rayDist) {
-              const perpX = toObsX - proj * Math.cos(rayAngle);
-              const perpY = toObsY - proj * Math.sin(rayAngle);
+              const perpX = toObsX - proj * rayDirX;
+              const perpY = toObsY - proj * rayDirY;
               const perpDist = Math.hypot(perpX, perpY);
 
               if (perpDist < obs.radius + 14) {
                 rayDist = proj;
                 hasHit = true;
+                isWallHit = false;
                 obstacleDetectedInCone = true;
-                if (proj < nearestObsDist) {
-                  nearestObsDist = proj;
+                if (proj < nearestDetectionDist) {
+                  nearestDetectionDist = proj;
                   detectedObstacle = obs;
-                  // Determine detour direction based on angle
                   lateralClearance = angleOffsets[i] >= 0 ? -1 : 1;
                 }
               }
@@ -378,83 +548,90 @@ export const PaganiSimulatorGame = () => {
           }
         }
 
-        const endX = startX + Math.cos(rayAngle) * rayDist;
-        const endY = startY + Math.sin(rayAngle) * rayDist;
+        const endX = startX + rayDirX * rayDist;
+        const endY = startY + rayDirY * rayDist;
 
-        rays.push({ startX, startY, endX, endY, hit: hasHit, dist: rayDist });
+        rays.push({ startX, startY, endX, endY, hit: hasHit, dist: rayDist, isWall: isWallHit });
       }
       car.lidarRays = rays;
 
-      // Proximity Alert state
+      // Proximity Alert Banner
       if (obstacleDetectedInCone && detectedObstacle) {
-        setProximityAlert(`${detectedObstacle.name.toUpperCase()} (${Math.round(nearestObsDist)}cm)`);
+        setProximityAlert(`MOVING ${detectedObstacle.name.toUpperCase()} (${Math.round(nearestDetectionDist)}cm)`);
+      } else if (wallDetectedInCone && nearestDetectionDist < 55) {
+        setProximityAlert(`WALL PROXIMITY BUFFER (${Math.round(nearestDetectionDist)}cm)`);
       } else {
         setProximityAlert(null);
       }
 
-      // 3. AUTONOMOUS OBSTACLE ESCAPE, REROUTING & SAFE NAVIGATION
+      // 3. AUTONOMOUS OBSTACLE & WALL ESCAPE NAVIGATION
       if (isAutopilot && selectedDest) {
-        // Target coordinates: first doorway node, then room destination center
-        const target = autopilotStageRef.current === 'doorway' && selectedDest.doorwayNode
-          ? selectedDest.doorwayNode
-          : selectedDest;
+        const queue = waypointQueueRef.current;
 
-        const distToTarget = Math.hypot(target.x - car.x, target.y - car.y);
-
-        // Check if reached doorway node -> switch to room interior
-        if (autopilotStageRef.current === 'doorway' && distToTarget < 35) {
-          autopilotStageRef.current = 'destination';
-        }
-
-        // Check if reached final room destination
-        if (autopilotStageRef.current === 'destination' && distToTarget < 30) {
-          car.speed *= 0.85;
+        if (queue.length === 0) {
+          // Reached destination!
+          car.speed *= 0.82;
           if (Math.abs(car.speed) < 0.2) {
             car.speed = 0;
             setIsAutopilot(false);
             setNavStatus(`ARRIVED SAFELY AT ${selectedDest.name.toUpperCase()}`);
           }
         } else {
-          // SAFE OBSTACLE ESCAPE LOGIC:
-          if (obstacleDetectedInCone && nearestObsDist < 85) {
-            if (nearestObsDist < 48) {
-              // CRITICAL PROXIMITY: SAFE YIELD & WAIT!
-              // When obstacle directly blocks vehicle path, slow to 0 and wait until it moves
+          // Current target waypoint
+          const currentTarget = queue[0];
+          const distToTarget = Math.hypot(currentTarget.x - car.x, currentTarget.y - car.y);
+
+          // Check if reached current waypoint
+          if (distToTarget < 28) {
+            queue.shift(); // Advance to next waypoint
+          }
+
+          // DYNAMIC COLLISION PREVENTION & REROUTING LOGIC:
+          if (nearestDetectionDist < 75) {
+            if (nearestDetectionDist < 42) {
+              // CRITICAL PROXIMITY: SAFE YIELD & WAIT / BRAKE
               car.isBraking = true;
-              car.speed *= 0.80;
+              car.speed *= 0.75;
               if (Math.abs(car.speed) < 0.1) car.speed = 0;
-              setNavStatus(`🛑 WAITING: YIELDING SAFELY UNTIL OBSTACLE CLEARS`);
+
+              if (detectedObstacle) {
+                setNavStatus(`🛑 WAITING: YIELDING SAFELY UNTIL OBSTACLE CLEARS`);
+              } else {
+                setNavStatus(`⚠️ WALL AHEAD: REROUTING STEER AWAY FROM WALL`);
+                // Turn away from wall towards open doorway
+                car.angle += lateralClearance * 0.08;
+                car.steerAngle = lateralClearance * 0.35;
+              }
             } else {
-              // EVASION & REROUTE: Steer away from obstacle into open space at slow safe crawl
+              // EVASION / DETOUR STEERING
               car.isBraking = false;
-              const detourAngle = car.angle + (lateralClearance !== 0 ? lateralClearance : 1) * 0.45;
-              car.angle += Math.sign(detourAngle - car.angle) * 0.08;
-              car.steerAngle = Math.sign(detourAngle - car.angle) * 0.35;
+              const detourAngle = car.angle + lateralClearance * 0.40;
+              car.angle += Math.sign(detourAngle - car.angle) * 0.075;
+              car.steerAngle = Math.sign(detourAngle - car.angle) * 0.30;
 
               // Safe slow crawl speed during evasion
               if (car.speed > 1.2) {
                 car.speed *= 0.90;
               } else if (car.speed < 1.0 && car.battery > 0) {
-                car.speed += 0.05;
+                car.speed += 0.04;
               }
-              setNavStatus(`⚡ EVADING OBSTACLE: CALCULATING SAFE DETOUR PATH`);
+              setNavStatus(`⚡ EVADING: CALCULATING SMOOTH DETOUR PATH`);
             }
           } else {
-            // PATH CLEAR: Navigate along the planned shortest distance path
+            // PATH CLEAR: Cruise along planned waypoint corridor path
             car.isBraking = false;
             setNavStatus(`NAVIGATING TO ${selectedDest.name.toUpperCase()}`);
 
-            const targetAngle = Math.atan2(target.y - car.y, target.x - car.x);
+            const targetAngle = Math.atan2(currentTarget.y - car.y, currentTarget.x - car.x);
             let angleDiff = targetAngle - car.angle;
 
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-            car.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), 0.085);
+            car.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), 0.082);
             car.steerAngle = Math.sign(angleDiff) * 0.28;
 
-            // Smooth, safe indoor speed (2.2 max indoors for comfort & precision)
-            const safeCruiseSpeed = 2.4;
+            const safeCruiseSpeed = 2.2;
             if (car.speed < safeCruiseSpeed && car.battery > 0) {
               car.speed += car.accel * 0.65;
               car.battery = Math.max(0, car.battery - 0.012);
@@ -472,9 +649,9 @@ export const PaganiSimulatorGame = () => {
         car.isAccelerating = !!gas;
         car.isBraking = !!brake || !!handbrake;
 
-        // Active safety collision assist: automatically slow down if manual driver approaches obstacle head-on
-        if (obstacleDetectedInCone && nearestObsDist < 35 && gas) {
-          car.speed *= 0.85; // Driver collision prevention brake
+        // Collision assist: prevent manual crash into walls or obstacles
+        if (nearestDetectionDist < 30 && gas) {
+          car.speed *= 0.80; // Anti-collision auto-brake
         }
 
         if (gas && car.battery > 0) {
@@ -517,60 +694,21 @@ export const PaganiSimulatorGame = () => {
       car.x += Math.cos(car.angle) * car.speed;
       car.y += Math.sin(car.angle) * car.speed;
 
-      // 4. SPACIOUS ARCHITECTURAL WALL BOUNDARIES (Canvas: 920 x 560)
-      const minX = 35, maxX = 885, minY = 35, maxY = 525;
-      if (car.x < minX) { car.x = minX; car.speed *= -0.3; }
-      if (car.x > maxX) { car.x = maxX; car.speed *= -0.3; }
-      if (car.y < minY) { car.y = minY; car.speed *= -0.3; }
-      if (car.y > maxY) { car.y = maxY; car.speed *= -0.3; }
+      // 4. PRECISE WALL COLLISION DEFENSE BUFFER (REPULSION FIELD)
+      // Car radius = 18px. If distance from car center to any wall segment < 20px, push out along normal!
+      for (const wall of HOUSE_WALLS) {
+        const proj = projectPointOnSegment(car.x, car.y, wall.x1, wall.y1, wall.x2, wall.y2);
+        const safeMargin = 19;
+        if (proj.dist < safeMargin) {
+          const penetration = safeMargin - proj.dist;
+          car.x += proj.nx * penetration;
+          car.y += proj.ny * penetration;
 
-      // Internal Architectural Wall Collisions with Doorway Openings
-      // Left vertical wall at x = 330:
-      // Top segment: y: 20 to 170 (leaves doorway: y: 170 to 250)
-      // Bottom segment: y: 290 to 540 (leaves doorway: y: 330 to 410)
-      if (Math.abs(car.x - 330) < 14) {
-        const inDoor = (car.y >= 170 && car.y <= 250) || (car.y >= 330 && car.y <= 410);
-        if (!inDoor) {
-          car.x = car.x < 330 ? 316 : 344;
-          car.speed *= -0.3;
-        }
-      }
-
-      // Right vertical wall at x = 590:
-      // Top segment: y: 20 to 170 (leaves doorway: y: 170 to 250)
-      // Bottom segment: y: 290 to 540 (leaves doorway: y: 330 to 410)
-      if (Math.abs(car.x - 590) < 14) {
-        const inDoor = (car.y >= 170 && car.y <= 250) || (car.y >= 330 && car.y <= 410);
-        if (!inDoor) {
-          car.x = car.x < 590 ? 576 : 604;
-          car.speed *= -0.3;
-        }
-      }
-
-      // Horizontal Wall Left (y = 280, x: 20 to 330) with Doorway (x: 130 to 210)
-      if (car.x < 330 && Math.abs(car.y - 280) < 14) {
-        const inDoor = car.x >= 130 && car.x <= 210;
-        if (!inDoor) {
-          car.y = car.y < 280 ? 266 : 294;
-          car.speed *= -0.3;
-        }
-      }
-
-      // Horizontal Wall Right (y = 280, x: 590 to 900) with Doorway (x: 710 to 790)
-      if (car.x > 590 && Math.abs(car.y - 280) < 14) {
-        const inDoor = car.x >= 710 && car.x <= 790;
-        if (!inDoor) {
-          car.y = car.y < 280 ? 266 : 294;
-          car.speed *= -0.3;
-        }
-      }
-
-      // Garden Glass Wall Top Partition (y = 150, x: 330 to 590) with wide center sliding door (x: 410 to 510)
-      if (car.x >= 330 && car.x <= 590 && Math.abs(car.y - 150) < 14) {
-        const inDoor = car.x >= 410 && car.x <= 510;
-        if (!inDoor) {
-          car.y = car.y < 150 ? 136 : 164;
-          car.speed *= -0.3;
+          // Deflect forward momentum along the wall surface (sliding physics)
+          const dot = car.speed * (Math.cos(car.angle) * proj.nx + Math.sin(car.angle) * proj.ny);
+          if (dot < 0) {
+            car.speed *= 0.65;
+          }
         }
       }
 
@@ -701,7 +839,6 @@ export const PaganiSimulatorGame = () => {
     }
 
     // Room 5: OUTDOOR BOTANICAL ZEN GARDEN & PATIO (x: 330-590, y: 20-150)
-    // Emerald Green Lawn
     ctx.fillStyle = '#042f20';
     ctx.fillRect(330, 20, 260, 130);
     // Stone stepping pavers in garden
@@ -723,14 +860,6 @@ export const PaganiSimulatorGame = () => {
     ctx.arc(560, 125, 14, 0, Math.PI * 2);
     ctx.fill();
 
-    // Flowers (accent pink & yellow dots)
-    ctx.fillStyle = '#ec4899';
-    ctx.fillRect(380, 40, 4, 4);
-    ctx.fillRect(540, 40, 4, 4);
-    ctx.fillStyle = '#eab308';
-    ctx.fillRect(380, 120, 4, 4);
-    ctx.fillRect(540, 120, 4, 4);
-
     // Outdoor Garden Lounge Patio Decking
     ctx.fillStyle = '#78350f';
     ctx.fillRect(430, 40, 60, 30);
@@ -751,62 +880,21 @@ export const PaganiSimulatorGame = () => {
     ctx.strokeRect(340, 160, 240, 370);
     ctx.setLineDash([]);
 
-    // 3. ARCHITECTURAL PARTITION WALLS & DOORWAYS
+    // 3. ARCHITECTURAL PARTITION WALLS & DOORWAYS (RENDER ALL WALLS)
     ctx.lineWidth = 8;
     ctx.strokeStyle = '#334155';
     ctx.lineCap = 'round';
 
-    // Outer Perimeter Wall
-    ctx.strokeRect(20, 20, 880, 520);
+    HOUSE_WALLS.forEach((wall) => {
+      ctx.beginPath();
+      ctx.moveTo(wall.x1, wall.y1);
+      ctx.lineTo(wall.x2, wall.y2);
+      ctx.stroke();
+    });
 
-    // Vertical Left Wall (x = 330)
-    ctx.beginPath();
-    ctx.moveTo(330, 20);
-    ctx.lineTo(330, 170); // Doorway: 170 - 250
-    ctx.moveTo(330, 250);
-    ctx.lineTo(330, 330); // Doorway: 330 - 410
-    ctx.moveTo(330, 410);
-    ctx.lineTo(330, 540);
-    ctx.stroke();
-
-    // Vertical Right Wall (x = 590)
-    ctx.beginPath();
-    ctx.moveTo(590, 20);
-    ctx.lineTo(590, 170); // Doorway: 170 - 250
-    ctx.moveTo(590, 250);
-    ctx.lineTo(590, 330); // Doorway: 330 - 410
-    ctx.moveTo(590, 410);
-    ctx.lineTo(590, 540);
-    ctx.stroke();
-
-    // Horizontal Wall Left (y = 280)
-    ctx.beginPath();
-    ctx.moveTo(20, 280);
-    ctx.lineTo(130, 280); // Doorway: 130 - 210
-    ctx.moveTo(210, 280);
-    ctx.lineTo(330, 280);
-    ctx.stroke();
-
-    // Horizontal Wall Right (y = 280)
-    ctx.beginPath();
-    ctx.moveTo(590, 280);
-    ctx.lineTo(710, 280); // Doorway: 710 - 790
-    ctx.moveTo(790, 280);
-    ctx.lineTo(900, 280);
-    ctx.stroke();
-
-    // Garden Glass Wall & Center Sliding Door (y = 150, x: 330 to 590)
-    ctx.strokeStyle = '#0284c7';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(330, 150);
-    ctx.lineTo(410, 150); // Glass partition left
-    ctx.moveTo(510, 150);
-    ctx.lineTo(590, 150); // Glass partition right
-    ctx.stroke();
-
-    // Sliding Door Track (x: 410 to 510)
+    // Garden Glass Sliding Door Indicator
     ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 2;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(410, 150);
@@ -839,20 +927,18 @@ export const PaganiSimulatorGame = () => {
     if (showFurniture) {
       // Room 1: Living Room Lounge Furniture
       ctx.fillStyle = '#334155';
-      ctx.fillRect(50, 45, 140, 48); // Sectional couch
-      ctx.fillRect(50, 93, 48, 65);  // Chaise
+      ctx.fillRect(50, 45, 140, 48);
+      ctx.fillRect(50, 93, 48, 65);
       ctx.strokeStyle = '#475569';
       ctx.lineWidth = 1;
       ctx.strokeRect(50, 45, 140, 48);
       ctx.strokeRect(50, 93, 48, 65);
 
-      // Coffee Table with Glass Top
       ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
       ctx.fillRect(115, 110, 60, 35);
       ctx.strokeStyle = '#38bdf8';
       ctx.strokeRect(115, 110, 60, 35);
 
-      // 85-Inch OLED TV Console
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(220, 30, 80, 16);
       ctx.strokeStyle = '#0284c7';
@@ -863,20 +949,16 @@ export const PaganiSimulatorGame = () => {
       ctx.fillText('85" 4K OLED', 235, 42);
 
       // Room 2: Master Bedroom Furniture
-      // King Platform Bed & Pillows
       ctx.fillStyle = '#1e1b4b';
       ctx.fillRect(720, 45, 110, 85);
       ctx.strokeStyle = '#6366f1';
       ctx.strokeRect(720, 45, 110, 85);
-      // Pillows
       ctx.fillStyle = '#e2e8f0';
       ctx.fillRect(730, 50, 38, 20);
       ctx.fillRect(780, 50, 38, 20);
-      // Duvet fold
       ctx.fillStyle = '#312e81';
       ctx.fillRect(720, 80, 110, 50);
 
-      // Nightstands
       ctx.fillStyle = '#4338ca';
       ctx.fillRect(685, 50, 28, 28);
       ctx.fillRect(838, 50, 28, 28);
@@ -948,19 +1030,26 @@ export const PaganiSimulatorGame = () => {
       ctx.fillText(room.name, room.x - 45, room.y + (isSelected ? 38 : 30));
     });
 
-    // 8. RENDER AUTOPILOT WAYPOINT TRAJECTORY LINE
-    if (isAutopilot && selectedDest) {
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
-      ctx.lineWidth = 2;
+    // 8. RENDER SAFE MULTI-NODE AUTOPILOT BREADCRUMB ROUTE
+    if (isAutopilot && waypointQueueRef.current.length > 0) {
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+      ctx.lineWidth = 2.5;
       ctx.setLineDash([6, 6]);
       ctx.beginPath();
       ctx.moveTo(car.x, car.y);
-      if (autopilotStageRef.current === 'doorway' && selectedDest.doorwayNode) {
-        ctx.lineTo(selectedDest.doorwayNode.x, selectedDest.doorwayNode.y);
+      for (const pt of waypointQueueRef.current) {
+        ctx.lineTo(pt.x, pt.y);
       }
-      ctx.lineTo(selectedDest.x, selectedDest.y);
       ctx.stroke();
       ctx.setLineDash([]);
+
+      // Draw node dots
+      waypointQueueRef.current.forEach((pt, idx) => {
+        ctx.fillStyle = idx === 0 ? '#38bdf8' : 'rgba(56, 189, 248, 0.4)';
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, idx === 0 ? 5 : 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
     }
 
     // 9. RENDER LIVE MOVING OBSTACLES (SRT Hellcat Mode or if enabled)
@@ -1018,7 +1107,6 @@ export const PaganiSimulatorGame = () => {
 
         ctx.restore();
 
-        // Pulsing proximity warning halos
         const d = Math.hypot(car.x - obs.x, car.y - obs.y);
         if (d < 70) {
           ctx.strokeStyle = '#ef4444';
@@ -1030,9 +1118,9 @@ export const PaganiSimulatorGame = () => {
       });
     }
 
-    // 10. RENDER FORWARD SENSOR SCAN (LiDAR / ULTRASONIC RAYS)
+    // 10. RENDER FORWARD SENSOR SCAN (LiDAR / ULTRASONIC RAYS HITTING WALLS & OBSTACLES)
     car.lidarRays.forEach((ray) => {
-      ctx.strokeStyle = ray.hit ? 'rgba(239, 68, 68, 0.85)' : 'rgba(56, 189, 248, 0.25)';
+      ctx.strokeStyle = ray.hit ? (ray.isWall ? 'rgba(234, 179, 8, 0.85)' : 'rgba(239, 68, 68, 0.9)') : 'rgba(56, 189, 248, 0.25)';
       ctx.lineWidth = ray.hit ? 2 : 1;
       ctx.beginPath();
       ctx.moveTo(ray.startX, ray.startY);
@@ -1040,9 +1128,9 @@ export const PaganiSimulatorGame = () => {
       ctx.stroke();
 
       if (ray.hit) {
-        ctx.fillStyle = '#ef4444';
+        ctx.fillStyle = ray.isWall ? '#eab308' : '#ef4444';
         ctx.beginPath();
-        ctx.arc(ray.endX, ray.endY, 4, 0, Math.PI * 2);
+        ctx.arc(ray.endX, ray.endY, 3.5, 0, Math.PI * 2);
         ctx.fill();
       }
     });
@@ -1133,7 +1221,6 @@ export const PaganiSimulatorGame = () => {
       ctx.strokeStyle = '#38bdf8';
       ctx.stroke();
 
-      // Signature Pagani Quad Titanium Exhaust Cluster
       ctx.fillStyle = '#94a3b8';
       ctx.beginPath();
       ctx.arc(-22, -2.5, 1.8, 0, Math.PI * 2);
@@ -1215,9 +1302,10 @@ export const PaganiSimulatorGame = () => {
 
   const handleSelectDest = (dest: RoomDestination) => {
     setSelectedDest(dest);
-    autopilotStageRef.current = 'doorway';
+    const plannedWaypoints = planRouteThroughCorridors(carRef.current.x, carRef.current.y, dest);
+    waypointQueueRef.current = plannedWaypoints;
     setIsAutopilot(true);
-    setNavStatus(`REROUTING VIA CORRIDOR TO ${dest.name.toUpperCase()}`);
+    setNavStatus(`PLANNED SAFE ROUTE VIA CORRIDORS TO ${dest.name.toUpperCase()}`);
   };
 
   const sendKey = (key: string, state: boolean) => {
@@ -1249,11 +1337,11 @@ export const PaganiSimulatorGame = () => {
             <h2 className="text-2xl font-black text-white flex items-center gap-3">
               <span>{config.name.toUpperCase()}</span>
               <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono">
-                SAFE OBSTACLE ESCAPE & REROUTING
+                ZERO-COLLISION SMART WALL & OBSTACLE AVOIDANCE
               </span>
             </h2>
             <p className="text-xs text-gray-400 font-mono mt-1">
-              Spacious 5-room floorplan with a wide corridor and outdoor Zen Garden. Equipped with forward LiDAR raycasting to detect moving obstacles, safely yield, or steer around them to reach destinations without collisions.
+              Equipped with 360° Wall Detection and Forward LiDAR raycasting. Plans collision-free paths strictly through doorways and corridors, yielding to moving obstacles and steering around walls automatically.
             </p>
           </div>
 
@@ -1278,6 +1366,7 @@ export const PaganiSimulatorGame = () => {
                 carRef.current.speed = 0;
                 carRef.current.angle = -Math.PI / 2;
                 carRef.current.battery = 100;
+                waypointQueueRef.current = [];
                 setIsAutopilot(false);
                 setNavStatus('RESET TO DOCK');
               }}
@@ -1396,8 +1485,8 @@ export const PaganiSimulatorGame = () => {
             {/* Obstacle Avoidance & Navigation Status Banner */}
             <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-1.5 pointer-events-none">
               {proximityAlert && (
-                <div className="px-3.5 py-1.5 rounded-xl bg-red-950/90 border border-red-500 text-red-300 text-xs font-mono font-bold animate-pulse flex items-center gap-1.5 shadow-lg">
-                  <ShieldAlert size={15} /> ⚠️ OBSTACLE DETECTED: {proximityAlert}
+                <div className="px-3.5 py-1.5 rounded-xl bg-amber-950/90 border border-amber-500 text-amber-300 text-xs font-mono font-bold animate-pulse flex items-center gap-1.5 shadow-lg">
+                  <ShieldAlert size={15} /> ⚠️ SENSOR ALERT: {proximityAlert}
                 </div>
               )}
 
@@ -1421,7 +1510,7 @@ export const PaganiSimulatorGame = () => {
           <div className="glass-panel p-4 rounded-2xl border border-white/10 flex flex-wrap items-center justify-between gap-4">
             <div className="text-xs font-mono text-gray-400 space-y-1">
               <div>
-                <span className="text-white font-bold">SMART AVOIDANCE:</span> Active forward LiDAR raycasts automatically detect obstacles, slow down to safe crawl, and steer detours!
+                <span className="text-white font-bold">SMART AVOIDANCE:</span> Active forward LiDAR raycasts detect walls & obstacles, auto-brake, and steer clear!
               </div>
               <div className="text-[10px] text-gray-500">
                 Manual: W/Up (Gas) • S/Down (Brake) • A/Left • D/Right • Space (Handbrake)
@@ -1504,7 +1593,7 @@ export const PaganiSimulatorGame = () => {
             </div>
 
             <p className="text-xs text-gray-400 font-mono">
-              Click any room to engage Autonomous Waypoint Navigation with real-time obstacle evasion & rerouting:
+              Click any room to navigate through doorways and corridors with zero wall collisions:
             </p>
 
             <div className="space-y-2.5">
