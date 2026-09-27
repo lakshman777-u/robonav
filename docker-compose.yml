@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  robonav:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: robonav-platform
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRET_KEY=robonav-secret-key-production-change-in-prod
+      - PORT=8000
+    volumes:
+      - ./data:/app/backend/data
