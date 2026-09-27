@@ -100,21 +100,28 @@ async def seed_data():
     from app.security.api_keys import hash_api_key
     from sqlalchemy.future import select
     async with AsyncSessionLocal() as session:
-        # Create admin
+        # Create or update admin
         result = await session.execute(
-            select(User).where(User.username == "admin")
+            select(User).where(User.username.in_(["admin", "ROBO_NAV Admin"]))
         )
-        if not result.scalar_one_or_none():
-            admin = User(username="admin", password_hash=hash_password("admin123"), role="admin")
+        existing_admin = result.scalar_one_or_none()
+        if not existing_admin:
+            admin = User(username="ROBO_NAV Admin", password_hash=hash_password("ECE4 BT 8"), role="admin")
             session.add(admin)
+        else:
+            existing_admin.username = "ROBO_NAV Admin"
+            existing_admin.password_hash = hash_password("ECE4 BT 8")
         
-        # Create user
+        # Create or update user
         result = await session.execute(
             select(User).where(User.username == "user")
         )
-        if not result.scalar_one_or_none():
-            user = User(username="user", password_hash=hash_password("user123"), role="user")
+        existing_user = result.scalar_one_or_none()
+        if not existing_user:
+            user = User(username="user", password_hash=hash_password("user112233"), role="user")
             session.add(user)
+        else:
+            existing_user.password_hash = hash_password("user112233")
             
         # Create robot
         result = await session.execute(

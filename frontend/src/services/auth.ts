@@ -50,11 +50,15 @@ export const login = async (username: string, password: string) => {
     // gracefully fall back to local demo authentication for admin & user
     const u = username.trim().toLowerCase();
     const p = password.trim();
-    if ((u === 'admin' && p === 'admin123') || (u === 'user' && p === 'user123')) {
-      const role = u === 'admin' ? 'admin' : 'user';
+    const isAdmin = (u === 'robo_nav admin' || u === 'admin') && (p === 'ECE4 BT 8' || p === 'ece4 bt 8' || p === 'admin123');
+    const isUser = (u === 'user') && (p === 'user112233' || p === 'user123');
+
+    if (isAdmin || isUser) {
+      const role = isAdmin ? 'admin' : 'user';
+      const displayName = isAdmin ? 'ROBO_NAV Admin' : 'user';
       const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
       const exp = Math.floor(Date.now() / 1000) + 86400 * 30; // 30 days
-      const payload = btoa(JSON.stringify({ sub: u, role, exp, mode: "cloud_demo" }));
+      const payload = btoa(JSON.stringify({ sub: displayName, role, exp, mode: "cloud_demo" }));
       const mockToken = `${header}.${payload}.signature_demo`;
       setToken(mockToken);
       return { access_token: mockToken, token_type: "bearer", role };

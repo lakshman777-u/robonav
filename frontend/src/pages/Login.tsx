@@ -150,24 +150,26 @@ export const Login = () => {
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
-              onClick={() => handleQuickLogin('admin', 'admin123')}
+              onClick={() => handleQuickLogin('ROBO_NAV Admin', 'ECE4 BT 8')}
               className="p-3 bg-slate-950/70 hover:bg-slate-900 border border-white/10 hover:border-cyan-500/40 rounded-xl text-left transition-all group"
             >
               <div className="flex items-center gap-2 text-cyan-400 font-bold text-xs">
-                <Shield size={14} /> Administrator
+                <Shield size={14} /> ROBO_NAV Admin
               </div>
-              <div className="text-[10px] text-gray-500 font-mono mt-0.5">admin / admin123</div>
+              <div className="text-[10px] text-gray-400 font-mono mt-0.5">ROBO_NAV Admin</div>
+              <div className="text-[9px] text-gray-500 font-mono">Key: ECE4 BT 8</div>
             </button>
 
             <button
               type="button"
-              onClick={() => handleQuickLogin('user', 'user123')}
+              onClick={() => handleQuickLogin('user', 'user112233')}
               className="p-3 bg-slate-950/70 hover:bg-slate-900 border border-white/10 hover:border-green-500/40 rounded-xl text-left transition-all group"
             >
               <div className="flex items-center gap-2 text-green-400 font-bold text-xs">
                 <Zap size={14} /> Operator
               </div>
-              <div className="text-[10px] text-gray-500 font-mono mt-0.5">user / user123</div>
+              <div className="text-[10px] text-gray-400 font-mono mt-0.5">user</div>
+              <div className="text-[9px] text-gray-500 font-mono">Key: user112233</div>
             </button>
           </div>
         </div>
