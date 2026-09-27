@@ -1,6 +1,5 @@
-import React from 'react';
 import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Map as MapIcon, Scan, Gamepad2, MapPin, Navigation as NavIcon, Radio, Wifi, ScrollText, Settings as SettingsIcon, LogOut } from 'lucide-react';
+import { LayoutDashboard, Map as MapIcon, Scan, Gamepad2, MapPin, Navigation as NavIcon, Radio, Wifi, ScrollText, Settings as SettingsIcon, LogOut, Video } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { MapCanvas } from '../components/MapCanvas';
 import { RobotStatus } from '../components/RobotStatus';
@@ -14,6 +13,7 @@ import { Settings } from './Settings';
 import { Sensors } from './Sensors';
 import { RobotConnection } from './RobotConnection';
 import { ApiDocs } from './ApiDocs';
+import { VideoTutorials } from './VideoTutorials';
 import { SystemLog } from '../components/SystemLog';
 
 const SidebarLink = ({ to, icon: Icon, label }: { to: string, icon: any, label: string }) => {
@@ -59,6 +59,7 @@ export const AdminDashboard = () => {
           <SidebarLink to="/admin/sensors" icon={Radio} label="Sensors" />
           <SidebarLink to="/admin/connection" icon={Wifi} label="Connection" />
           <SidebarLink to="/admin/logs" icon={ScrollText} label="Logs" />
+          <SidebarLink to="/admin/tutorials" icon={Video} label="Video Guides" />
           <SidebarLink to="/admin/settings" icon={SettingsIcon} label="Settings" />
           <SidebarLink to="/admin/api-docs" icon={ScrollText} label="API Docs" />
         </div>
@@ -71,7 +72,16 @@ export const AdminDashboard = () => {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-        <div className="h-16 bg-dark-card border-b border-dark-border flex items-center px-6 justify-end shadow-sm z-10">
+        <div className="h-16 bg-dark-card border-b border-dark-border flex items-center px-6 justify-between shadow-sm z-10">
+          <div className="flex items-center gap-2">
+            <Link
+              to="/admin/tutorials"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-purple-600/20 text-purple-300 border border-purple-600/40 hover:bg-purple-600/30 rounded-lg text-xs font-bold transition-all shadow-sm"
+            >
+              <Video size={14} /> ▶ Watch Video Guides
+            </Link>
+          </div>
+
           <div className="flex items-center gap-4">
             <span className="px-3 py-1 bg-blue-900/30 text-blue-400 rounded-full text-xs font-bold border border-blue-900">SIMULATION MODE</span>
           </div>
@@ -87,6 +97,7 @@ export const AdminDashboard = () => {
             <Route path="/sensors" element={<Sensors />} />
             <Route path="/connection" element={<RobotConnection />} />
             <Route path="/logs" element={<div className="h-[calc(100vh-8rem)]"><SystemLog /></div>} />
+            <Route path="/tutorials" element={<VideoTutorials />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/api-docs" element={<ApiDocs />} />
           </Routes>
