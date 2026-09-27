@@ -48,10 +48,14 @@ export const login = async (username: string, password: string) => {
   } catch (err: any) {
     // When running on GitHub Pages (static cloud hosting) without a live backend,
     // gracefully fall back to local demo authentication for admin & user
-    const u = username.trim().toLowerCase();
-    const p = password.trim();
-    const isAdmin = (u === 'robo_nav admin' || u === 'admin') && (p === 'ECE4 BT 8' || p === 'ece4 bt 8' || p === 'admin123');
-    const isUser = (u === 'user') && (p === 'user112233' || p === 'user123');
+    const normU = username.trim().toLowerCase().replace(/[\s_-]/g, '');
+    const normP = password.trim().toUpperCase().replace(/[\s_-]/g, '');
+
+    const isAdmin = (normU === 'robonavadmin' || normU === 'admin' || normU === 'robonav') &&
+                    (normP === 'ECEBT8' || normP === 'ECE4BT8' || normP === 'ADMIN123');
+
+    const isUser = (normU === 'user' || normU === 'operator') &&
+                   (normP === 'USER112233' || normP === 'USER123');
 
     if (isAdmin || isUser) {
       const role = isAdmin ? 'admin' : 'user';

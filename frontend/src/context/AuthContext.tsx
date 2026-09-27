@@ -27,7 +27,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (u: string, p: string) => {
     const data = await authLogin(u, p);
     if (data && data.access_token) {
+      setToken(data.access_token);
       setTokenState(data.access_token);
+      setUser(getUser());
     }
   };
 
@@ -37,15 +39,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
   };
 
+  const currentUser = user || getUser();
+
   return (
     <AuthContext.Provider value={{
-      user,
-      token,
-      role: user?.role || null,
+      user: currentUser,
+      token: token || getToken(),
+      role: currentUser?.role || null,
       login,
       logout,
       isAdmin: checkIsAdmin(),
-      isAuthenticated: !!token
+      isAuthenticated: !!(token || getToken())
     }}>
       {children}
     </AuthContext.Provider>

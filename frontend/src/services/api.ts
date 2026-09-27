@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getToken, logout } from './auth';
+import { getToken, logout, getUser } from './auth';
 
 const api = axios.create({
   baseURL: '/api'
@@ -16,7 +16,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const user = getUser();
+    if (error.response?.status === 401 && user?.mode !== 'cloud_demo') {
       logout();
     }
     return Promise.reject(error);

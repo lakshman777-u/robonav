@@ -7,14 +7,14 @@ import toast from 'react-hot-toast';
 import { Shield, KeyRound, Cpu, Gauge, Zap } from 'lucide-react';
 
 export const Login = () => {
-  const { login, isAuthenticated, role } = useAuth();
+  const { login, isAuthenticated, role, isAdmin } = useAuth();
   const { config } = useCarTrim();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   if (isAuthenticated) {
-    return <Navigate to={role === 'admin' ? '/admin' : '/user'} replace />;
+    return <Navigate to={(role === 'admin' || isAdmin) ? '/admin' : '/user'} replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -144,24 +144,32 @@ export const Login = () => {
         {/* 1-Click Fast Track Pilot Buttons */}
         <div className="relative z-10 mt-6 pt-5 border-t border-white/10">
           <div className="text-[11px] font-mono text-gray-400 text-center mb-3">
-            QUICK ACCESS DEMO CREDENTIALS
+            FAST TRACK PILOT ACCESS (1-CLICK CONNECT)
           </div>
 
-          <div>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('ROBO_NAV Admin', 'ECE_BT 8')}
+              className="p-3 bg-slate-950/70 hover:bg-slate-900 border border-white/10 hover:border-cyan-500/40 rounded-xl text-left transition-all group"
+            >
+              <div className="flex items-center gap-2 text-cyan-400 font-bold text-xs">
+                <Shield size={14} /> ROBO_NAV Admin
+              </div>
+              <div className="text-[10px] text-gray-400 font-mono mt-0.5">Admin Cockpit Portal</div>
+              <div className="text-[9px] text-cyan-400/70 font-mono">Access: Secured (••••••••)</div>
+            </button>
+
             <button
               type="button"
               onClick={() => handleQuickLogin('user', 'user112233')}
-              className="w-full p-3 bg-slate-950/70 hover:bg-slate-900 border border-white/10 hover:border-green-500/40 rounded-xl text-left transition-all group flex items-center justify-between"
+              className="p-3 bg-slate-950/70 hover:bg-slate-900 border border-white/10 hover:border-green-500/40 rounded-xl text-left transition-all group"
             >
-              <div>
-                <div className="flex items-center gap-2 text-green-400 font-bold text-xs">
-                  <Zap size={14} /> Operator Demo Access
-                </div>
-                <div className="text-[10px] text-gray-400 font-mono mt-0.5">ID: user • Key: user112233</div>
+              <div className="flex items-center gap-2 text-green-400 font-bold text-xs">
+                <Zap size={14} /> Operator
               </div>
-              <span className="text-[10px] font-mono text-green-400/80 bg-green-500/10 px-2.5 py-1 rounded-md border border-green-500/20">
-                1-CLICK LOGIN
-              </span>
+              <div className="text-[10px] text-gray-400 font-mono mt-0.5">user</div>
+              <div className="text-[9px] text-gray-500 font-mono">Key: user112233</div>
             </button>
           </div>
         </div>
