@@ -101,7 +101,7 @@ export const AdminDashboard = () => {
 
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
           <SidebarLink to="/admin" icon={LayoutDashboard} label="Cockpit Dashboard" />
-          <SidebarLink to="/admin/simulator-game" icon={Gamepad2} label="🎮 Pagani Practice Sim" />
+          <SidebarLink to="/admin/simulator-game" icon={Gamepad2} label="🎮 House Simulator (3 Trims)" />
           <SidebarLink to="/admin/map" icon={MapIcon} label="2D Live Map" />
           <SidebarLink to="/admin/mapping" icon={Scan} label="SLAM Mapping" />
           <SidebarLink to="/admin/control" icon={NavIcon} label="Chassis Drive" />
