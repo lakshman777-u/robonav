@@ -17,6 +17,7 @@ import { Sensors } from './Sensors';
 import { RobotConnection } from './RobotConnection';
 import { ApiDocs } from './ApiDocs';
 import { VideoTutorials } from './VideoTutorials';
+import { PaganiSimulatorGame } from './PaganiSimulatorGame';
 import { SystemLog } from '../components/SystemLog';
 
 const SidebarLink = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => {
@@ -100,9 +101,10 @@ export const AdminDashboard = () => {
 
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
           <SidebarLink to="/admin" icon={LayoutDashboard} label="Cockpit Dashboard" />
+          <SidebarLink to="/admin/simulator-game" icon={Gamepad2} label="🎮 Pagani Practice Sim" />
           <SidebarLink to="/admin/map" icon={MapIcon} label="2D Live Map" />
           <SidebarLink to="/admin/mapping" icon={Scan} label="SLAM Mapping" />
-          <SidebarLink to="/admin/control" icon={Gamepad2} label="Chassis Drive" />
+          <SidebarLink to="/admin/control" icon={NavIcon} label="Chassis Drive" />
           <SidebarLink to="/admin/destinations" icon={MapPin} label="Destinations" />
           <SidebarLink to="/admin/navigation" icon={NavIcon} label="Autonomous Nav" />
           <SidebarLink to="/admin/sensors" icon={Radio} label="Telemetry Sensors" />
@@ -127,9 +129,16 @@ export const AdminDashboard = () => {
       <div className="flex-1 flex flex-col h-full overflow-hidden relative z-10">
         {/* Cockpit Top Bar */}
         <div className="h-16 bg-slate-950/70 backdrop-blur-xl border-b border-white/10 flex items-center px-6 justify-between shadow-lg z-10">
-          {/* Left: Trim Switcher & Video Guides */}
+          {/* Left: Trim Switcher & Video Guides & Game Button */}
           <div className="flex items-center gap-3">
             <CarTrimSelector />
+
+            <Link
+              to="/admin/simulator-game"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-600/30 rounded-xl text-xs font-bold transition-all shadow-sm"
+            >
+              <Gamepad2 size={14} /> 🎮 Play Pagani Sim
+            </Link>
 
             <Link
               to="/admin/tutorials"
@@ -153,6 +162,7 @@ export const AdminDashboard = () => {
         <div className="flex-1 p-6 overflow-auto">
           <Routes>
             <Route path="/" element={<DashboardHome />} />
+            <Route path="/simulator-game" element={<PaganiSimulatorGame />} />
             <Route path="/map" element={<div className="h-[calc(100vh-8rem)] rounded-2xl overflow-hidden glass-panel border border-white/10"><MapCanvas /></div>} />
             <Route path="/mapping" element={<Mapping />} />
             <Route path="/control" element={<div className="max-w-md space-y-4"><ManualControl /><EmergencyStop /></div>} />
