@@ -147,29 +147,21 @@ export const Login = () => {
             QUICK ACCESS DEMO CREDENTIALS
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('ROBO_NAV Admin', 'ECE4 BT 8')}
-              className="p-3 bg-slate-950/70 hover:bg-slate-900 border border-white/10 hover:border-cyan-500/40 rounded-xl text-left transition-all group"
-            >
-              <div className="flex items-center gap-2 text-cyan-400 font-bold text-xs">
-                <Shield size={14} /> ROBO_NAV Admin
-              </div>
-              <div className="text-[10px] text-gray-400 font-mono mt-0.5">ROBO_NAV Admin</div>
-              <div className="text-[9px] text-gray-500 font-mono">Key: ECE4 BT 8</div>
-            </button>
-
+          <div>
             <button
               type="button"
               onClick={() => handleQuickLogin('user', 'user112233')}
-              className="p-3 bg-slate-950/70 hover:bg-slate-900 border border-white/10 hover:border-green-500/40 rounded-xl text-left transition-all group"
+              className="w-full p-3 bg-slate-950/70 hover:bg-slate-900 border border-white/10 hover:border-green-500/40 rounded-xl text-left transition-all group flex items-center justify-between"
             >
-              <div className="flex items-center gap-2 text-green-400 font-bold text-xs">
-                <Zap size={14} /> Operator
+              <div>
+                <div className="flex items-center gap-2 text-green-400 font-bold text-xs">
+                  <Zap size={14} /> Operator Demo Access
+                </div>
+                <div className="text-[10px] text-gray-400 font-mono mt-0.5">ID: user • Key: user112233</div>
               </div>
-              <div className="text-[10px] text-gray-400 font-mono mt-0.5">user</div>
-              <div className="text-[9px] text-gray-500 font-mono">Key: user112233</div>
+              <span className="text-[10px] font-mono text-green-400/80 bg-green-500/10 px-2.5 py-1 rounded-md border border-green-500/20">
+                1-CLICK LOGIN
+              </span>
             </button>
           </div>
         </div>
