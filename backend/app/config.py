@@ -4,7 +4,7 @@ from typing import List
 class Settings(BaseSettings):
     SECRET_KEY: str = "change-this-to-a-random-secret-key"
     DATABASE_URL: str = "sqlite+aiosqlite:///./robonav.db"
-    JWT_EXPIRATION_MINUTES: int = 480
+    JWT_EXPIRATION_MINUTES: int = 43200
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
 
     @property

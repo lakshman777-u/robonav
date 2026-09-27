@@ -4,21 +4,75 @@
 
 @layer base {
   body {
-    @apply bg-[#0f172a] text-slate-100;
+    @apply bg-black text-slate-100 font-sans antialiased overflow-x-hidden;
+    background-color: #030712;
   }
 }
 
+/* Carbon Fiber Twill Weave Pattern */
+.bg-carbon-pattern {
+  background-color: #05070d;
+  background-image: 
+    linear-gradient(45deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.03) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.03) 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+}
+
+/* Glassmorphism Hypercar Panels */
+.glass-panel {
+  background: rgba(10, 15, 29, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.glass-panel-glow-cyan {
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  box-shadow: 0 0 25px rgba(6, 182, 212, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.glass-panel-glow-red {
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  box-shadow: 0 0 25px rgba(239, 68, 68, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.glass-panel-glow-gold {
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  box-shadow: 0 0 25px rgba(245, 158, 11, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+/* Custom Cockpit Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0f172a; 
+  background: rgba(3, 7, 18, 0.8); 
 }
 ::-webkit-scrollbar-thumb {
-  background: #334155; 
-  border-radius: 4px;
+  background: rgba(71, 85, 105, 0.6); 
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569; 
+  background: rgba(148, 163, 184, 0.9); 
+}
+
+/* Animated Neon Pulse */
+@keyframes neon-pulse {
+  0%, 100% {
+    opacity: 0.6;
+    filter: drop-shadow(0 0 8px currentColor);
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 16px currentColor);
+  }
+}
+
+.animate-neon {
+  animation: neon-pulse 2.5s infinite ease-in-out;
 }
