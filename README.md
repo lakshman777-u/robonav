@@ -70,8 +70,8 @@ python robot_client.py
 By default, the robot client uses simulated sensors and motors if real hardware is not available.
 
 ## Demo Credentials
-- Admin: ROBO_NAV Admin / ECE4 BT 8
-- User: user / user112233
+- Admin: admin / admin123
+- User: user / user123
 
 ## License
 MIT License

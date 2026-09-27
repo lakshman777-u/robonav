@@ -59,7 +59,7 @@ export const login = async (username: string, password: string) => {
 
     if (isAdmin || isUser) {
       const role = isAdmin ? 'admin' : 'user';
-      const displayName = isAdmin ? 'ROBO_NAV Admin' : 'user';
+      const displayName = isAdmin ? 'admin' : 'user';
       const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
       const exp = Math.floor(Date.now() / 1000) + 86400 * 30; // 30 days
       const payload = btoa(JSON.stringify({ sub: displayName, role, exp, mode: "cloud_demo" }));

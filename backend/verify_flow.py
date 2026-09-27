@@ -15,13 +15,13 @@ async def run_verification():
     async with aiohttp.ClientSession() as session:
         # Step 1: Login
         print("\n[Step 1] Authenticating Admin & Operator...")
-        async with session.post(f"{BASE_URL}/api/auth/login", json={"username": "ROBO_NAV Admin", "password": "ECE4 BT 8"}) as resp:
+        async with session.post(f"{BASE_URL}/api/auth/login", json={"username": "admin", "password": "admin123"}) as resp:
             assert resp.status == 200, "Admin login failed"
             admin_data = await resp.json()
             admin_token = admin_data["access_token"]
             print(f"  ✓ Admin authenticated (role: {admin_data['role']})")
             
-        async with session.post(f"{BASE_URL}/api/auth/login", json={"username": "user", "password": "user112233"}) as resp:
+        async with session.post(f"{BASE_URL}/api/auth/login", json={"username": "user", "password": "user123"}) as resp:
             assert resp.status == 200, "User login failed"
             user_data = await resp.json()
             user_token = user_data["access_token"]

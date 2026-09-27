@@ -106,11 +106,12 @@ async def seed_data():
         )
         existing_admin = result.scalar_one_or_none()
         if not existing_admin:
-            admin = User(username="ROBO_NAV Admin", password_hash=hash_password("ECE4 BT 8"), role="admin")
+            admin = User(username="admin", password_hash=hash_password("admin123"), role="admin")
             session.add(admin)
         else:
-            existing_admin.username = "ROBO_NAV Admin"
-            existing_admin.password_hash = hash_password("ECE4 BT 8")
+            existing_admin.username = "admin"
+            existing_admin.password_hash = hash_password("admin123")
+            existing_admin.role = "admin"
         
         # Create or update user
         result = await session.execute(
@@ -118,10 +119,12 @@ async def seed_data():
         )
         existing_user = result.scalar_one_or_none()
         if not existing_user:
-            user = User(username="user", password_hash=hash_password("user112233"), role="user")
+            user = User(username="user", password_hash=hash_password("user123"), role="user")
             session.add(user)
         else:
-            existing_user.password_hash = hash_password("user112233")
+            existing_user.username = "user"
+            existing_user.password_hash = hash_password("user123")
+            existing_user.role = "user"
             
         # Create robot
         result = await session.execute(

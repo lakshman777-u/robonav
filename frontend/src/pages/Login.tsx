@@ -144,32 +144,30 @@ export const Login = () => {
         {/* 1-Click Fast Track Pilot Buttons */}
         <div className="relative z-10 mt-6 pt-5 border-t border-white/10">
           <div className="text-[11px] font-mono text-gray-400 text-center mb-3">
-            FAST TRACK PILOT ACCESS (1-CLICK CONNECT)
+            QUICK ACCESS DEMO CREDENTIALS
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
-              onClick={() => handleQuickLogin('ROBO_NAV Admin', 'ECE_BT 8')}
+              onClick={() => handleQuickLogin('admin', 'admin123')}
               className="p-3 bg-slate-950/70 hover:bg-slate-900 border border-white/10 hover:border-cyan-500/40 rounded-xl text-left transition-all group"
             >
               <div className="flex items-center gap-2 text-cyan-400 font-bold text-xs">
-                <Shield size={14} /> ROBO_NAV Admin
+                <Shield size={14} /> Administrator
               </div>
-              <div className="text-[10px] text-gray-400 font-mono mt-0.5">Admin Cockpit Portal</div>
-              <div className="text-[9px] text-cyan-400/70 font-mono">Access: Secured (••••••••)</div>
+              <div className="text-[10px] text-gray-500 font-mono mt-0.5">admin / admin123</div>
             </button>
 
             <button
               type="button"
-              onClick={() => handleQuickLogin('user', 'user112233')}
+              onClick={() => handleQuickLogin('user', 'user123')}
               className="p-3 bg-slate-950/70 hover:bg-slate-900 border border-white/10 hover:border-green-500/40 rounded-xl text-left transition-all group"
             >
               <div className="flex items-center gap-2 text-green-400 font-bold text-xs">
                 <Zap size={14} /> Operator
               </div>
-              <div className="text-[10px] text-gray-400 font-mono mt-0.5">user</div>
-              <div className="text-[9px] text-gray-500 font-mono">Key: user112233</div>
+              <div className="text-[10px] text-gray-500 font-mono mt-0.5">user / user123</div>
             </button>
           </div>
         </div>
