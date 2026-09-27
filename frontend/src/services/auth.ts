@@ -17,8 +17,13 @@ export const getUser = () => {
   if (!token) return null;
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
+    if (payload.exp && payload.exp < Date.now() / 1000) {
+      removeToken();
+      return null;
+    }
     return payload;
   } catch (e) {
+    removeToken();
     return null;
   }
 };
@@ -30,12 +35,7 @@ export const isAdmin = () => {
 
 export const logout = () => {
   removeToken();
-  const current = window.location.pathname;
-  if (current.includes('/admin') || current.includes('/user')) {
-    window.location.href = current.replace(/\/(admin|user).*/, '/login');
-  } else {
-    window.location.href = '/login';
-  }
+  window.location.hash = '#/login';
 };
 
 export const login = async (username: string, password: string) => {

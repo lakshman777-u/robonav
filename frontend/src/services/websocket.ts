@@ -18,12 +18,26 @@ class WebSocketService {
 
   private initWs() {
     if (!this.token) return;
+
+    // Check if running on GitHub Pages or static host without local backend
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const env = (import.meta as any).env || {};
+    const hasCustomWs = !!env.VITE_WS_URL;
+    if (!isLocal && !hasCustomWs) {
+      this.state = 'disconnected';
+      return;
+    }
     
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    const url = `${protocol}//${host}/ws/browser?token=${this.token}`;
+    const url = env.VITE_WS_URL || `${protocol}//${host}/ws/browser?token=${this.token}`;
     
-    this.ws = new WebSocket(url);
+    try {
+      this.ws = new WebSocket(url);
+    } catch (e) {
+      this.state = 'disconnected';
+      return;
+    }
 
     this.ws.onopen = () => {
       this.state = 'connected';

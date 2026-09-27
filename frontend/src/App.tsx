@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import { RobotProvider } from './context/RobotContext';
@@ -10,7 +10,7 @@ import { UserDashboard } from './pages/UserDashboard';
 
 const App = () => {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <CarTrimProvider>
         <AuthProvider>
           <RobotProvider>
@@ -38,7 +38,7 @@ const App = () => {
           </RobotProvider>
         </AuthProvider>
       </CarTrimProvider>
-    </BrowserRouter>
+    </HashRouter>
   );
 };
 
