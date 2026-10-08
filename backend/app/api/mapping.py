@@ -28,13 +28,34 @@ async def create_map(map_data: MapCreate, db: AsyncSession = Depends(get_db), cu
     pass
 
 @router.get("")
-async def list_maps(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+@router.get("/api/map")
+async def list_maps(db: AsyncSession = Depends(get_db), current_user: Optional[User] = Depends(get_current_user)):
     result = await db.execute(select(Map))
     maps = result.scalars().all()
     return [{"id": m.id, "map_id": m.map_id, "name": m.name, "status": m.status} for m in maps]
 
+@router.get("/current")
+async def get_current_map(db: AsyncSession = Depends(get_db), current_user: Optional[User] = Depends(get_current_user)):
+    result = await db.execute(select(Map).order_by(Map.id.desc()))
+    m = result.scalars().first()
+    if not m:
+        return {"id": 1, "map_id": "MAP-001", "name": "Default 2D Map", "status": "active", "occupancy_data": None}
+    occupancy = base64.b64encode(m.occupancy_data).decode('utf-8') if m.occupancy_data else None
+    return {
+        "id": m.id, 
+        "map_id": m.map_id, 
+        "name": m.name, 
+        "resolution": m.resolution, 
+        "width": m.width,
+        "height": m.height,
+        "origin_x": m.origin_x,
+        "origin_y": m.origin_y,
+        "occupancy_data": occupancy,
+        "status": m.status
+    }
+
 @router.get("/{map_id}")
-async def get_map(map_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def get_map(map_id: int, db: AsyncSession = Depends(get_db), current_user: Optional[User] = Depends(get_current_user)):
     result = await db.execute(select(Map).where(Map.id == map_id))
     m = result.scalar_one_or_none()
     if not m:

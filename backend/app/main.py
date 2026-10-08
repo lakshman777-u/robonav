@@ -34,6 +34,8 @@ app.include_router(ws_robot.router)
 @app.on_event("startup")
 async def startup_event():
     await init_db()
+    if not simulator.is_running:
+        await simulator.start()
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -44,9 +46,13 @@ async def shutdown_event():
 async def health_check():
     return {"status": "ok"}
 
-@app.post("/api/robot/auth")
-async def robot_auth_alias(req: robot.RobotAuthRequest, db: AsyncSession = Depends(robot.get_db)):
-    return await robot.robot_auth(req, db)
+@app.post("/api/mapping/start")
+async def mapping_start_alias(req: mapping.MapCreate, current_user: User = Depends(require_admin)):
+    return await mapping.api_start_mapping(req, current_user)
+
+@app.post("/api/mapping/stop")
+async def mapping_stop_alias(current_user: User = Depends(require_admin)):
+    return await mapping.api_stop_mapping(current_user)
 
 class SimToggle(BaseModel):
     enabled: bool

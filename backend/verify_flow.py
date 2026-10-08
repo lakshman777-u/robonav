@@ -30,12 +30,28 @@ async def run_verification():
         admin_headers = {"Authorization": f"Bearer {admin_token}"}
         user_headers = {"Authorization": f"Bearer {user_token}"}
 
-        # Step 2: Generate API Key
-        print("\n[Step 2] Generating Secure API Key for Robot...")
-        async with session.post(f"{BASE_URL}/api/robots/ROBOT-001/api-key", headers=admin_headers) as resp:
+        # Step 2: Generate API Key for ESP32-CAM
+        print("\n[Step 2] Generating Secure API Key for ESP32-CAM (ESP32CAM-001)...")
+        async with session.post(f"{BASE_URL}/api/robots/ESP32CAM-001/api-key", headers=admin_headers) as resp:
             assert resp.status == 200, "API key generation failed"
             key_data = await resp.json()
-            print(f"  ✓ API key generated with prefix: '{key_data['prefix']}' (Key: {key_data['api_key'][:22]}...)")
+            api_key = key_data['api_key']
+            print(f"  ✓ API key generated with prefix: '{key_data['prefix']}' (Key: {api_key[:22]}...)")
+
+        # Step 2b: Authenticate ESP32-CAM via /api/robot/auth
+        print("\n[Step 2b] Authenticating ESP32-CAM with PC Robot API Server...")
+        async with session.post(f"{BASE_URL}/api/robot/auth", json={"robot_id": "ESP32CAM-001", "api_key": api_key}) as resp:
+            assert resp.status == 200, "ESP32-CAM authentication failed"
+            auth_res = await resp.json()
+            assert auth_res.get("authenticated") is True
+            print(f"  ✓ ESP32-CAM Authenticated! Token={auth_res['access_token'][:18]}... WS={auth_res['websocket_url']}")
+
+        # Step 2c: Verify Camera Telemetry Endpoint
+        print("\n[Step 2c] Verifying PC Camera Video Service Telemetry...")
+        async with session.get(f"{BASE_URL}/api/video/status") as resp:
+            assert resp.status == 200, "Video status endpoint failed"
+            vid_status = await resp.json()
+            print(f"  ✓ Camera Status: {vid_status['status']} | FPS: {vid_status['fps']} | Res: {vid_status['resolution']}")
 
         # Step 3: Start Simulation & 10x Demo Time
         print("\n[Step 3] Initializing 20m x 15m Simulation World & Time Compression...")

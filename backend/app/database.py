@@ -23,6 +23,7 @@ class Robot(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     robot_id: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
+    robot_type: Mapped[str] = mapped_column(String(50), default="ESP32-CAM")
     api_key_hash: Mapped[str] = mapped_column(String(255), nullable=True)
     api_key_prefix: Mapped[str] = mapped_column(String(8), nullable=True)
     connection_status: Mapped[str] = mapped_column(String(50), default="offline")
@@ -126,17 +127,36 @@ async def seed_data():
             existing_user.password_hash = hash_password("user123")
             existing_user.role = "user"
             
-        # Create robot
+        # Create or update ESP32-CAM robot
         result = await session.execute(
-            select(Robot).where(Robot.robot_id == "ROBOT-001")
+            select(Robot).where(Robot.robot_id == "ESP32CAM-001")
         )
-        if not result.scalar_one_or_none():
+        esp32_robot = result.scalar_one_or_none()
+        if not esp32_robot:
             robot = Robot(
-                robot_id="ROBOT-001",
-                name="Raspberry Pi Robot 01",
+                robot_id="ESP32CAM-001",
+                name="Autonomous Robot 01",
+                robot_type="ESP32-CAM",
                 api_key_hash=hash_api_key("demo_key_12345"),
                 api_key_prefix="demo_key"
             )
             session.add(robot)
+        else:
+            esp32_robot.name = "Autonomous Robot 01"
+            esp32_robot.robot_type = "ESP32-CAM"
+            
+        # Backward compatibility for ROBOT-001 alias if needed
+        result_old = await session.execute(
+            select(Robot).where(Robot.robot_id == "ROBOT-001")
+        )
+        if not result_old.scalar_one_or_none():
+            robot_old = Robot(
+                robot_id="ROBOT-001",
+                name="Autonomous Robot 01 (Legacy Alias)",
+                robot_type="ESP32-CAM",
+                api_key_hash=hash_api_key("demo_key_12345"),
+                api_key_prefix="demo_key"
+            )
+            session.add(robot_old)
             
         await session.commit()

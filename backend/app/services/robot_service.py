@@ -14,6 +14,9 @@ class RobotState:
         
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "robot_id": "ESP32CAM-001",
+            "name": "Autonomous Robot 01",
+            "robot_type": "ESP32-CAM",
             "state": self.state,
             "position": self.position,
             "orientation": self.orientation,

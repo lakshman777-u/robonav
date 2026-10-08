@@ -24,3 +24,8 @@ __pycache__/
 .vscode/
 .idea/
 .DS_Store
+
+# Local simulators
+autonomous_robot_webots/
+robonav1
+

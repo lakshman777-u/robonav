@@ -3,6 +3,8 @@ import { useAuth } from '../hooks/useAuth';
 import { useCarTrim } from '../context/CarTrimContext';
 import { CarTrimSelector } from '../components/CarTrimSelector';
 import { MapCanvas } from '../components/MapCanvas';
+import { LiveCamera } from '../components/LiveCamera';
+import { HardwareIndicators } from '../components/HardwareIndicators';
 import { DestinationList } from '../components/DestinationList';
 import { RobotStatus } from '../components/RobotStatus';
 import { NavigationPanel } from '../components/NavigationPanel';
@@ -18,7 +20,7 @@ export const UserDashboard = () => {
   return (
     <div className="h-screen flex flex-col text-slate-100 overflow-hidden relative">
       {/* Supercar Header */}
-      <header className="h-16 bg-slate-950/70 backdrop-blur-xl border-b border-white/10 flex items-center justify-between px-6 z-20 shadow-lg">
+      <header className="h-16 bg-slate-950/70 backdrop-blur-xl border-b border-white/10 flex items-center justify-between px-6 z-20 shadow-lg flex-shrink-0">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <Cpu size={18} style={{ color: config.primaryColor }} />
@@ -43,7 +45,7 @@ export const UserDashboard = () => {
             onClick={() => setShowVideoModal(true)}
             className="flex items-center gap-2 px-3.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded-xl text-xs font-bold transition-all shadow-sm"
           >
-            <Video size={15} /> ▶ Watch Video Guide: How to Navigate
+            <Video size={15} /> ▶ Watch Video Guide
           </button>
 
           <button
@@ -70,17 +72,30 @@ export const UserDashboard = () => {
         </div>
       )}
 
-      {/* Main Grid View */}
-      <div className="flex-1 p-5 flex flex-col lg:flex-row gap-5 overflow-hidden relative z-10">
-        <div className="flex-1 h-full rounded-2xl overflow-hidden glass-panel border border-white/10 shadow-2xl relative">
-          <MapCanvas />
-        </div>
+      {/* Main Container */}
+      <div className="flex-1 p-5 flex flex-col gap-4 overflow-y-auto relative z-10">
+        {/* Hardware Status Indicators Bar */}
+        <HardwareIndicators />
 
-        <div className="w-full lg:w-84 flex flex-col h-full overflow-y-auto pr-1 pb-4 space-y-4">
-          <RobotStatus />
-          <NavigationPanel />
-          <WaitingTimer />
-          <DestinationList />
+        {/* Side-by-Side: LIVE CAMERA (Left) and LIVE 2D MAP (Right) + Side Panel */}
+        <div className="flex-1 flex flex-col lg:flex-row gap-5 min-h-[500px]">
+          {/* Left: Live Camera Stream */}
+          <div className="flex-1 h-[480px] lg:h-full rounded-2xl overflow-hidden shadow-2xl">
+            <LiveCamera />
+          </div>
+
+          {/* Center-Right: 2D Live SLAM Map */}
+          <div className="flex-1 h-[480px] lg:h-full rounded-2xl overflow-hidden glass-panel border border-white/10 shadow-2xl relative">
+            <MapCanvas />
+          </div>
+
+          {/* Right Column: Destination Dispatch & Status */}
+          <div className="w-full lg:w-84 flex flex-col gap-4 overflow-y-auto pr-1 pb-4">
+            <RobotStatus />
+            <NavigationPanel />
+            <WaitingTimer />
+            <DestinationList />
+          </div>
         </div>
       </div>
     </div>

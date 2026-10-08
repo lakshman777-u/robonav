@@ -4,6 +4,7 @@ import { wsService } from '../services/websocket';
 import { RobotStatus, SensorData } from '../types/robot';
 import { MapData } from '../types/map';
 import { Destination } from '../types/navigation';
+import toast from 'react-hot-toast';
 
 export interface RobotContextType {
   robotStatus: RobotStatus | null;
@@ -15,6 +16,7 @@ export interface RobotContextType {
   wsConnected: boolean;
   simulationMode: boolean;
   demoMode: boolean;
+  setSimulationMode: (enabled: boolean) => void;
   sendCommand: (command: string, params?: any) => void;
 }
 
@@ -29,7 +31,7 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
   const [_navigationPath, setNavigationPath] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
-  const [_simulationMode, setSimulationMode] = useState(false);
+  const [simulationMode, setSimulationMode] = useState(true);
   const [_demoMode, setDemoMode] = useState(false);
 
   useEffect(() => {
@@ -62,7 +64,6 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
             return { ...prev, occupancy_grid: newGrid };
           });
         } else if (msg.data && msg.data.occupancy_grid) {
-          // Fallback if full map is sent
           setMapData(msg.data);
         }
       };
@@ -71,10 +72,15 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
         if (msg.data) setLogs(prev => [msg.data, ...prev].slice(0, 200));
       };
 
+      const onConnLost = (msg: any) => {
+        toast.error(msg.message || '⚠ ROBOT CONNECTION LOST');
+      };
+
       wsService.onMessage('robot_status', onStatus);
       wsService.onMessage('sensor_data', onSensor);
       wsService.onMessage('map_update', onMap);
       wsService.onMessage('log_event', onLog);
+      wsService.onMessage('robot_connection_lost', onConnLost);
 
       return () => {
         clearInterval(checkConn);
@@ -96,8 +102,9 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
       navigationPath: _navigationPath,
       logs,
       wsConnected,
-      simulationMode: _simulationMode,
+      simulationMode,
       demoMode: _demoMode,
+      setSimulationMode,
       sendCommand
     }}>
       {children}

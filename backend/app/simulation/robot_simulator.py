@@ -340,6 +340,9 @@ class RobotSimulator:
                 self.wait_timer = None
 
     async def _send_status(self):
+        from app.services.video_service import video_service
+        video_service.set_sim_context(self.orientation, self.velocity, sim_mode=True)
+        
         progress = 0
         rem_dist = 0
         if self.current_path:
@@ -349,8 +352,9 @@ class RobotSimulator:
         msg = {
             "type": "robot_status",
             "data": {
-                "robot_id": "ROBOT-001",
+                "robot_id": "ESP32CAM-001",
                 "state": self.state,
+                "connection_status": "ONLINE",
                 "position": self.position,
                 "orientation": self.orientation,
                 "velocity": self.velocity,
@@ -359,7 +363,16 @@ class RobotSimulator:
                 "current_destination": self.destination,
                 "navigation_progress": progress,
                 "distance_remaining": rem_dist,
-                "estimated_time_remaining": rem_dist / max(0.1, abs(self.velocity)) if self.velocity != 0 else 0
+                "estimated_time_remaining": rem_dist / max(0.1, abs(self.velocity)) if self.velocity != 0 else 0,
+                "hardware": {
+                    "pc_server": "ONLINE",
+                    "esp32": "ONLINE",
+                    "websocket": "CONNECTED",
+                    "camera": "STREAMING",
+                    "lidar": "ACTIVE",
+                    "ultrasonic": "ACTIVE",
+                    "motor_controller": "READY"
+                }
             }
         }
         await manager.broadcast_to_browsers(msg)
@@ -377,6 +390,7 @@ class RobotSimulator:
             await manager.broadcast_to_browsers(nav_msg)
         
     async def _send_sensor_data(self):
+        from app.services.video_service import video_service
         msg = {
             "type": "sensor_data",
             "data": {
@@ -389,15 +403,15 @@ class RobotSimulator:
                 },
                 "camera": {
                     "connected": True,
-                    "obstacle_detected": self.state == "OBSTACLE_DETECTED",
-                    "obstacle_type": "dynamic",
+                    "obstacle_detected": self.state == "OBSTACLE_DETECTED" or video_service.cv_obstacle_detected,
+                    "obstacle_type": "dynamic" if self.state == "OBSTACLE_DETECTED" else video_service.cv_obstacle_type,
                     "distance": 0.5
                 },
                 "ultrasonic": {
-                    "front": random.uniform(0.5, 2.0),
-                    "left": random.uniform(0.5, 2.0),
-                    "right": random.uniform(0.5, 2.0),
-                    "rear": random.uniform(0.5, 2.0)
+                    "front": round(random.uniform(0.8, 1.9), 2),
+                    "left": round(random.uniform(1.2, 2.5), 2),
+                    "right": round(random.uniform(1.0, 2.2), 2),
+                    "rear": round(random.uniform(1.5, 3.0), 2)
                 },
                 "glass_detected": any(r['distance'] < 2.0 for r in self.lidar_rays)
             }

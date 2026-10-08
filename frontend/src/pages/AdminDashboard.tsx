@@ -5,6 +5,8 @@ import { useCarTrim } from '../context/CarTrimContext';
 import { CarTrimSelector } from '../components/CarTrimSelector';
 import { CockpitGauges } from '../components/CockpitGauges';
 import { MapCanvas } from '../components/MapCanvas';
+import { LiveCamera } from '../components/LiveCamera';
+import { HardwareIndicators } from '../components/HardwareIndicators';
 import { RobotStatus } from '../components/RobotStatus';
 import { ManualControl } from '../components/ManualControl';
 import { EmergencyStop } from '../components/EmergencyStop';
@@ -48,16 +50,29 @@ const SidebarLink = ({ to, icon: Icon, label }: { to: string; icon: any; label: 
 
 const DashboardHome = () => (
   <div className="space-y-5 pb-6">
-    {/* Supercar Instrument Cluster (Tachometer, Battery, 4-Wheel AWD Torque) */}
-    <CockpitGauges />
+    {/* Hardware Link Indicators */}
+    <HardwareIndicators />
 
-    {/* Map Canvas and Control Columns */}
-    <div className="flex flex-col lg:flex-row gap-5">
-      <div className="flex-1 h-[520px] rounded-2xl overflow-hidden border border-white/10 shadow-2xl glass-panel relative">
-        <MapCanvas />
+    {/* Side-by-Side Live Camera & Live 2D Map (Requirements #11, #13, #14, #42) */}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      {/* Left: Live Camera View */}
+      <div className="h-[480px] rounded-2xl overflow-hidden">
+        <LiveCamera />
       </div>
 
-      <div className="w-full lg:w-84 flex flex-col gap-4">
+      {/* Right: Live 2D SLAM Map */}
+      <div className="h-[480px] rounded-2xl overflow-hidden border border-white/10 shadow-2xl glass-panel relative">
+        <MapCanvas />
+      </div>
+    </div>
+
+    {/* Cockpit Gauges & Controls */}
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+      <div className="lg:col-span-2">
+        <CockpitGauges />
+      </div>
+
+      <div className="flex flex-col gap-4">
         <RobotStatus />
         <ManualControl />
         <EmergencyStop />
@@ -152,8 +167,8 @@ export const AdminDashboard = () => {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-white/10 text-xs font-mono">
               <span className="w-2 h-2 rounded-full animate-ping" style={{ backgroundColor: config.primaryColor }} />
-              <span className="text-gray-300">SIMULATION ENGINE:</span>
-              <span className="font-bold" style={{ color: config.primaryColor }}>ACTIVE</span>
+              <span className="text-gray-300">ESP32 + PC ENGINE:</span>
+              <span className="font-bold text-cyan-400">ACTIVE</span>
             </div>
           </div>
         </div>
@@ -167,7 +182,7 @@ export const AdminDashboard = () => {
             <Route path="/mapping" element={<Mapping />} />
             <Route path="/control" element={<div className="max-w-md space-y-4"><ManualControl /><EmergencyStop /></div>} />
             <Route path="/destinations" element={<div className="max-w-2xl"><DestinationList /></div>} />
-            <Route path="/navigation" element={<div className="max-w-4xl flex gap-4"><div className="flex-1"><Navigation /></div><div className="w-80"><NavigationPanel /></div></div>} />
+            <Route path="/navigation" element={<div className="max-w-5xl flex gap-4"><div className="flex-1"><Navigation /></div><div className="w-80"><NavigationPanel /></div></div>} />
             <Route path="/sensors" element={<Sensors />} />
             <Route path="/connection" element={<RobotConnection />} />
             <Route path="/logs" element={<div className="h-[calc(100vh-8rem)]"><SystemLog /></div>} />
