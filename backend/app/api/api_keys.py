@@ -12,11 +12,24 @@ async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
 
+@router.get("")
+@router.get("/status")
+async def get_key_status(robot_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Robot).where(Robot.robot_id == robot_id))
+    robot = result.scalars().first()
+    if not robot:
+        raise HTTPException(status_code=404, detail="Robot not found")
+    return {
+        "has_key": robot.api_key_hash is not None,
+        "prefix": robot.api_key_prefix or "rb_live_",
+        "robot_id": robot.robot_id
+    }
+
 @router.post("")
 @router.post("/generate")
 async def generate_key(robot_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin)):
     result = await db.execute(select(Robot).where(Robot.robot_id == robot_id))
-    robot = result.scalar_one_or_none()
+    robot = result.scalars().first()
     
     if not robot:
         raise HTTPException(status_code=404, detail="Robot not found")
@@ -32,7 +45,7 @@ async def generate_key(robot_id: str, db: AsyncSession = Depends(get_db), curren
 @router.post("/revoke")
 async def revoke_key(robot_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin)):
     result = await db.execute(select(Robot).where(Robot.robot_id == robot_id))
-    robot = result.scalar_one_or_none()
+    robot = result.scalars().first()
     
     if not robot:
         raise HTTPException(status_code=404, detail="Robot not found")
@@ -46,7 +59,7 @@ async def revoke_key(robot_id: str, db: AsyncSession = Depends(get_db), current_
 @router.post("/regenerate")
 async def regenerate_key(robot_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin)):
     result = await db.execute(select(Robot).where(Robot.robot_id == robot_id))
-    robot = result.scalar_one_or_none()
+    robot = result.scalars().first()
     
     if not robot:
         raise HTTPException(status_code=404, detail="Robot not found")

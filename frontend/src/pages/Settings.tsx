@@ -3,6 +3,7 @@ import { toggleSimulation, toggleDemoTime } from '../services/api';
 import { useRobotStatus } from '../hooks/useRobotStatus';
 import { Cpu, Wifi, FastForward, CheckCircle2, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { ApiKeyManager } from '../components/ApiKeyManager';
 
 export const Settings = () => {
   const { simulationMode, setSimulationMode } = useRobotStatus();
@@ -132,6 +133,11 @@ export const Settings = () => {
         >
           {demo ? '10x ACTIVE' : 'NORMAL (1x)'}
         </button>
+      </div>
+
+      {/* Embedded API Key Vault & Hardware Pairing */}
+      <div className="pt-2">
+        <ApiKeyManager robotId="ESP32CAM-001" />
       </div>
     </div>
   );
