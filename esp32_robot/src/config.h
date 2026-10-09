@@ -15,7 +15,7 @@
 
 // --- PC Robot API Server Configuration ---
 // The IP address and port of your Main PC running the RoboNav FastAPI backend
-#define PC_SERVER_HOST        "192.168.1.100"  // Set to your laptop LAN IP address
+#define PC_SERVER_HOST        "10.166.2.244"
 #define PC_SERVER_PORT        8000 
 #define SERVER_IP             PC_SERVER_HOST
 #define SERVER_PORT           PC_SERVER_PORT

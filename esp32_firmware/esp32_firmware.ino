@@ -10,7 +10,7 @@
    - Wi-Fi Pass:  00000000
    - Robot ID:    ESP32CAM-001
    - API Key:     rb_live_Quwl_PxT5rgl8I-IGQquU2JaKSuQDPMq
-   - Target PC:   192.168.1.100:8000 (Your laptop)
+   - Target PC:   10.166.2.244:8000 (Your laptop)
 
    Features:
    - Hardware UART Serial2 parsing of native YDLIDAR X2 binary packets (0xAA 0x55)
@@ -48,7 +48,7 @@
 // --- Robot Identity & Laptop Server Link ---
 #define ROBOT_ID              "ESP32CAM-001"
 #define ROBOT_API_KEY         "rb_live_Quwl_PxT5rgl8I-IGQquU2JaKSuQDPMq"
-#define PC_SERVER_HOST        "192.168.1.100"  // <-- CHANGE TO YOUR LAPTOP LAN IP ADDRESS (e.g. 192.168.1.X)
+#define PC_SERVER_HOST        "10.166.2.244"
 #define PC_SERVER_PORT        8000
 
 // --- Wi-Fi Network Credentials ---
