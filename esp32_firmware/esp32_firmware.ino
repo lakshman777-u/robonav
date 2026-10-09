@@ -79,11 +79,27 @@
 #define PIN_MOTOR_RIGHT_PWM   14
 #define PIN_MOTOR_RIGHT_DIR   15
 
-// PWM Channels (ESP32 LEDC)
+// PWM Channels & Helpers (Compatible with ESP32 Core 2.x and Core 3.x)
 #define PWM_CHANNEL_LEFT      0
 #define PWM_CHANNEL_RIGHT     1
 #define PWM_FREQ              1000   // 1 kHz PWM frequency
 #define PWM_RES               8      // 8-bit resolution (0 - 255)
+
+void setPwmLeft(int duty) {
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+  ledcWrite(PIN_MOTOR_LEFT_PWM, duty);
+#else
+  ledcWrite(PWM_CHANNEL_LEFT, duty);
+#endif
+}
+
+void setPwmRight(int duty) {
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+  ledcWrite(PIN_MOTOR_RIGHT_PWM, duty);
+#else
+  ledcWrite(PWM_CHANNEL_RIGHT, duty);
+#endif
+}
 
 // --- 4-Way Ultrasonic Sensors (HC-SR04) ---
 #define PIN_US_FRONT_TRIG     2
@@ -122,15 +138,27 @@ LidarPoint lidarPoints[36];
 // 4. MOTOR DRIVER CONTROLLER
 // ========================================================================================
 
+void stopMotors() {
+  currentSpeed = 0.0f;
+  setPwmLeft(0);
+  setPwmRight(0);
+  digitalWrite(PIN_MOTOR_LEFT_DIR, LOW);
+  digitalWrite(PIN_MOTOR_RIGHT_DIR, LOW);
+}
+
 void initMotors() {
   pinMode(PIN_MOTOR_LEFT_DIR, OUTPUT);
   pinMode(PIN_MOTOR_RIGHT_DIR, OUTPUT);
 
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+  ledcAttach(PIN_MOTOR_LEFT_PWM, PWM_FREQ, PWM_RES);
+  ledcAttach(PIN_MOTOR_RIGHT_PWM, PWM_FREQ, PWM_RES);
+#else
   ledcSetup(PWM_CHANNEL_LEFT, PWM_FREQ, PWM_RES);
   ledcSetup(PWM_CHANNEL_RIGHT, PWM_FREQ, PWM_RES);
-
   ledcAttachPin(PIN_MOTOR_LEFT_PWM, PWM_CHANNEL_LEFT);
   ledcAttachPin(PIN_MOTOR_RIGHT_PWM, PWM_CHANNEL_RIGHT);
+#endif
 
   stopMotors();
   Serial.println("[MOTORS] Motor driver initialized (PWM & Direction ready).");
@@ -140,19 +168,19 @@ void setMotorSpeed(int leftSpeed, int rightSpeed) {
   // Left Motor
   if (leftSpeed >= 0) {
     digitalWrite(PIN_MOTOR_LEFT_DIR, HIGH);
-    ledcWrite(PWM_CHANNEL_LEFT, constrain(leftSpeed, 0, 255));
+    setPwmLeft(constrain(leftSpeed, 0, 255));
   } else {
     digitalWrite(PIN_MOTOR_LEFT_DIR, LOW);
-    ledcWrite(PWM_CHANNEL_LEFT, constrain(-leftSpeed, 0, 255));
+    setPwmLeft(constrain(-leftSpeed, 0, 255));
   }
 
   // Right Motor
   if (rightSpeed >= 0) {
     digitalWrite(PIN_MOTOR_RIGHT_DIR, HIGH);
-    ledcWrite(PWM_CHANNEL_RIGHT, constrain(rightSpeed, 0, 255));
+    setPwmRight(constrain(rightSpeed, 0, 255));
   } else {
     digitalWrite(PIN_MOTOR_RIGHT_DIR, LOW);
-    ledcWrite(PWM_CHANNEL_RIGHT, constrain(-rightSpeed, 0, 255));
+    setPwmRight(constrain(-rightSpeed, 0, 255));
   }
 }
 
@@ -174,14 +202,6 @@ void turnLeft(int speed = 180) {
 void turnRight(int speed = 180) {
   currentSpeed = 0.15f;
   setMotorSpeed(speed, -speed);
-}
-
-void stopMotors() {
-  currentSpeed = 0.0f;
-  ledcWrite(PWM_CHANNEL_LEFT, 0);
-  ledcWrite(PWM_CHANNEL_RIGHT, 0);
-  digitalWrite(PIN_MOTOR_LEFT_DIR, LOW);
-  digitalWrite(PIN_MOTOR_RIGHT_DIR, LOW);
 }
 
 void emergencyStop() {
@@ -369,7 +389,11 @@ bool authenticateWithLaptop() {
   http.addHeader("Content-Type", "application/json");
 
   // Create authentication JSON payload with your API key
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+  JsonDocument authDoc;
+#else
   StaticJsonDocument<256> authDoc;
+#endif
   authDoc["robot_id"] = ROBOT_ID;
   authDoc["api_key"] = ROBOT_API_KEY;
 
@@ -383,7 +407,11 @@ bool authenticateWithLaptop() {
     Serial.println("[AUTH] Handshake SUCCESS! Authenticated with Laptop:");
     Serial.println(response);
 
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+    JsonDocument respDoc;
+#else
     StaticJsonDocument<512> respDoc;
+#endif
     DeserializationError error = deserializeJson(respDoc, response);
 
     if (!error) {
@@ -428,7 +456,11 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       String msg = String((char*)payload);
       lastCommandTime = millis(); // Refresh watchdog timer
 
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+      JsonDocument cmdDoc;
+#else
       StaticJsonDocument<512> cmdDoc;
+#endif
       DeserializationError err = deserializeJson(cmdDoc, msg);
       if (!err) {
         String command = cmdDoc["command"].as<String>();
@@ -496,7 +528,11 @@ void sendTelemetryAndLidar() {
   float rearDist  = measureDistanceMeters(PIN_US_REAR_TRIG, PIN_US_REAR_ECHO, 2.20f);
 
   // Build JSON telemetry packet for Laptop SLAM Engine
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+  JsonDocument doc;
+#else
   StaticJsonDocument<2048> doc;
+#endif
   doc["type"] = "telemetry";
   doc["robot_id"] = ROBOT_ID;
   doc["timestamp"] = now;
@@ -504,31 +540,37 @@ void sendTelemetryAndLidar() {
   doc["speed"] = currentSpeed;
 
   // Ultrasonic sensor readings
-  JsonObject usObj = doc.createNestedObject("ultrasonic");
-  usObj["front"] = frontDist;
-  usObj["left"] = leftDist;
-  usObj["right"] = rightDist;
-  usObj["rear"] = rearDist;
+  doc["ultrasonic"]["front"] = frontDist;
+  doc["ultrasonic"]["left"] = leftDist;
+  doc["ultrasonic"]["right"] = rightDist;
+  doc["ultrasonic"]["rear"] = rearDist;
 
   // LiDAR status
-  JsonObject lidarObj = doc.createNestedObject("lidar");
-  lidarObj["status"] = "ACTIVE";
-  lidarObj["model"] = "YDLIDAR X2";
+  doc["lidar"]["status"] = "ACTIVE";
+  doc["lidar"]["model"] = "YDLIDAR X2";
 
   // Transmit 360-degree YDLIDAR X2 point cloud directly to Laptop SLAM Mapping Engine
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+  JsonArray pointsArr = doc["points"].to<JsonArray>();
+  for (int i = 0; i < 36; i++) {
+    JsonObject p = pointsArr.add<JsonObject>();
+    p["angle"] = lidarPoints[i].angle;
+    p["distance"] = lidarPoints[i].distance;
+  }
+#else
   JsonArray pointsArr = doc.createNestedArray("points");
   for (int i = 0; i < 36; i++) {
     JsonObject p = pointsArr.createNestedObject();
     p["angle"] = lidarPoints[i].angle;
     p["distance"] = lidarPoints[i].distance;
   }
+#endif
 
   // Hardware health indicators
-  JsonObject hwObj = doc.createNestedObject("hardware");
-  hwObj["esp32"] = "ONLINE";
-  hwObj["lidar"] = "ACTIVE";
-  hwObj["ultrasonic"] = "ACTIVE";
-  hwObj["motors"] = (currentSpeed != 0.0f) ? "RUNNING" : "READY";
+  doc["hardware"]["esp32"] = "ONLINE";
+  doc["hardware"]["lidar"] = "ACTIVE";
+  doc["hardware"]["ultrasonic"] = "ACTIVE";
+  doc["hardware"]["motors"] = (currentSpeed != 0.0f) ? "RUNNING" : "READY";
 
   String payload;
   serializeJson(doc, payload);
