@@ -128,7 +128,7 @@ async def seed_data():
             existing_user.role = "user"
             
         # Create or update ESP32-CAM robot
-        default_esp32_key = "rb_live_ESP32CAM001_MasterKey_8f3a9e2d"
+        user_esp32_key = "rb_live_Quwl_PxT5rgl8I-IGQquU2JaKSuQDPMq"
         result = await session.execute(
             select(Robot).where(Robot.robot_id == "ESP32CAM-001")
         )
@@ -138,16 +138,15 @@ async def seed_data():
                 robot_id="ESP32CAM-001",
                 name="Autonomous Robot 01",
                 robot_type="ESP32-CAM",
-                api_key_hash=hash_api_key(default_esp32_key),
+                api_key_hash=hash_api_key(user_esp32_key),
                 api_key_prefix="rb_live_"
             )
             session.add(robot)
         else:
             esp32_robot.name = "Autonomous Robot 01"
             esp32_robot.robot_type = "ESP32-CAM"
-            if not esp32_robot.api_key_hash or esp32_robot.api_key_prefix == "demo_key":
-                esp32_robot.api_key_hash = hash_api_key(default_esp32_key)
-                esp32_robot.api_key_prefix = "rb_live_"
+            esp32_robot.api_key_hash = hash_api_key(user_esp32_key)
+            esp32_robot.api_key_prefix = "rb_live_"
             
         # Backward compatibility for ROBOT-001 alias if needed
         result_old = await session.execute(
@@ -159,13 +158,12 @@ async def seed_data():
                 robot_id="ROBOT-001",
                 name="Autonomous Robot 01 (Legacy Alias)",
                 robot_type="ESP32-CAM",
-                api_key_hash=hash_api_key(default_esp32_key),
+                api_key_hash=hash_api_key(user_esp32_key),
                 api_key_prefix="rb_live_"
             )
             session.add(robot_old)
         else:
-            if not robot_old.api_key_hash or robot_old.api_key_prefix == "demo_key":
-                robot_old.api_key_hash = hash_api_key(default_esp32_key)
-                robot_old.api_key_prefix = "rb_live_"
+            robot_old.api_key_hash = hash_api_key(user_esp32_key)
+            robot_old.api_key_prefix = "rb_live_"
             
         await session.commit()

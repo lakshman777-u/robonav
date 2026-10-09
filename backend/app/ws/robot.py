@@ -3,7 +3,7 @@ import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.ws.manager import manager
 from app.services.robot_service import transition, robot_state
-from app.services.mapping_service import update_map
+from app.services.mapping_service import update_map, process_lidar_points
 from app.services.navigation_service import update_navigation_progress
 from app.services.video_service import video_service
 
@@ -75,6 +75,12 @@ async def robot_websocket_endpoint(websocket: WebSocket, token: str = ""):
                     }
                 })
                 
+                # Process LiDAR points into 2D SLAM grid
+                if "points" in t_data or "lidar_points" in t_data:
+                    pts = t_data.get("points") or t_data.get("lidar_points")
+                    if pts:
+                        process_lidar_points(pts, robot_state.position, robot_state.orientation)
+
                 # If telemetry includes sensors, forward sensor_data
                 if "ultrasonic" in t_data or "lidar" in t_data:
                     await manager.broadcast_to_browsers({
@@ -88,6 +94,9 @@ async def robot_websocket_endpoint(websocket: WebSocket, token: str = ""):
                     })
                     
             elif msg_type in ["sensor_data", "lidar_scan"]:
+                pts = message.get("points") or message.get("data", {}).get("points")
+                if pts:
+                    process_lidar_points(pts, robot_state.position, robot_state.orientation)
                 await manager.broadcast_to_browsers(message)
                 
             elif msg_type == "map_update":

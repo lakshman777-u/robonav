@@ -19,7 +19,7 @@ void TelemetryManager::sendTelemetry() {
 
     UltrasonicReadings us = ultrasonicSensors.getReadings();
 
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<1536> doc;
     doc["type"] = "telemetry";
     doc["robot_id"] = ROBOT_ID;
     doc["timestamp"] = millis();
@@ -34,6 +34,16 @@ void TelemetryManager::sendTelemetry() {
 
     JsonObject lidarObj = doc.createNestedObject("lidar");
     lidarObj["status"] = lidar.isActive() ? "ACTIVE" : "INACTIVE";
+
+    // Transmit 360-degree point cloud to PC SLAM engine
+    JsonArray pointsArr = doc.createNestedArray("points");
+    int ptCount = lidar.getPointCount();
+    for (int i = 0; i < ptCount; i++) {
+        LidarPoint pt = lidar.getPoint(i);
+        JsonObject p = pointsArr.createNestedObject();
+        p["angle"] = pt.angle;
+        p["distance"] = pt.distance;
+    }
 
     JsonObject cameraObj = doc.createNestedObject("camera");
     cameraObj["status"] = cameraStream.isReady() ? "STREAMING" : "OFFLINE";
