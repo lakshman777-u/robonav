@@ -1,23 +1,33 @@
 /*
   ========================================================================================
-   ROBONAV — AUTONOMOUS ESP32-CAM + LIDAR SLAM ROBOT FIRMWARE
+   ROBONAV — AUTONOMOUS ESP32-CAM + YDLIDAR X2 SLAM ROBOT FIRMWARE
    Distributed Architecture: ESP32-CAM (Robot Controller) + Laptop (SLAM & Web Server)
   ========================================================================================
 
+   Configured specifically for:
+   - LiDAR Model: YDLIDAR X2 (115200 baud, 360-degree laser range scanner)
+   - Wi-Fi SSID:  ZORO
+   - Wi-Fi Pass:  00000000
+   - Robot ID:    ESP32CAM-001
+   - API Key:     rb_live_Quwl_PxT5rgl8I-IGQquU2JaKSuQDPMq
+   - Target PC:   192.168.1.100:8000 (Your laptop)
+
    Features:
-   - Wi-Fi 2.4GHz Auto-Connect & Self-Healing Connection
-   - Secure Handshake against Laptop REST API using ROBOT_API_KEY
-   - Full-Duplex Bidirectional WebSocket (/ws/robot) Telemetry & Control Bridge
-   - Real-Time 360-Degree LiDAR Distance Acquisition & Wi-Fi Transmission to Laptop
-   - 4-Way Ultrasonic Sensors (Front, Left, Right, Rear) in Meters
-   - Differential PWM Motor Control (L298N / TB6612FNG)
-   - Hardware Watchdog Failsafe (Immediate auto-stop on signal loss > 650ms)
-   - Real-Time 2D Occupancy Grid SLAM Mapping displayed live on your Web Browser!
+   - Hardware UART Serial2 parsing of native YDLIDAR X2 binary packets (0xAA 0x55)
+   - Automatic motor spin-up via M_EN pin
+   - Real-time 360-degree point cloud acquisition in meters
+   - Wi-Fi 2.4GHz auto-reconnect
+   - REST API token authentication using your secret API key
+   - High-speed WebSocket (/ws/robot) 10Hz telemetry streaming
+   - 4-way ultrasonic proximity detection
+   - Differential PWM motor control (L298N / TB6612FNG)
+   - Hardware watchdog safety failsafe (>650ms timeout)
+   - Real-time 2D SLAM mapping rendered live on your laptop web page!
 
    Required Arduino IDE Libraries:
-   1. WebSockets by Markus Sattler (v2.4.0+) -> Install via Arduino Library Manager
-   2. ArduinoJson by Benoit Blanchon (v6.x or v7.x) -> Install via Arduino Library Manager
-   3. WiFi & HTTPClient -> Built-in with ESP32 Board Package by Espressif
+   1. WebSockets by Markus Sattler (v2.4.0+) -> Sketch > Include Library > Manage Libraries
+   2. ArduinoJson by Benoit Blanchon (v6.x or v7.x) -> Sketch > Include Library > Manage Libraries
+   3. WiFi & HTTPClient -> Built-in with ESP32 Board Package
 
    Board Selection in Arduino IDE:
    - Tools > Board > ESP32 Arduino > "AI Thinker ESP32-CAM" (or "ESP32 Dev Module")
@@ -32,26 +42,36 @@
 #include <ArduinoJson.h>
 
 // ========================================================================================
-// 1. CONFIGURATION & CREDENTIALS
+// 1. YOUR PROJECT CREDENTIALS & LAPTOP SERVER LINK
 // ========================================================================================
 
 // --- Robot Identity & Laptop Server Link ---
 #define ROBOT_ID              "ESP32CAM-001"
 #define ROBOT_API_KEY         "rb_live_Quwl_PxT5rgl8I-IGQquU2JaKSuQDPMq"
-#define PC_SERVER_HOST        "192.168.1.100"  // <-- CHANGE TO YOUR LAPTOP LAN IP ADDRESS
+#define PC_SERVER_HOST        "192.168.1.100"  // <-- CHANGE TO YOUR LAPTOP LAN IP ADDRESS (e.g. 192.168.1.X)
 #define PC_SERVER_PORT        8000
 
-// --- Wi-Fi 2.4GHz Network Credentials ---
-#define WIFI_SSID             "YOUR_WIFI_NAME"      // <-- CHANGE TO YOUR WI-FI SSID
-#define WIFI_PASSWORD         "YOUR_WIFI_PASSWORD"  // <-- CHANGE TO YOUR WI-FI PASSWORD
+// --- Wi-Fi Network Credentials ---
+#define WIFI_SSID             "ZORO"
+#define WIFI_PASSWORD         "00000000"
 
 // --- Timing & Safety Parameters ---
-#define TELEMETRY_RATE_HZ     10     // Transmit LiDAR point cloud to laptop 10 times/sec
+#define TELEMETRY_RATE_HZ     10     // Transmit point cloud to laptop 10 times/sec
 #define WATCHDOG_TIMEOUT_MS   650    // Cut motor power if no command received within 650ms
 
 // ========================================================================================
 // 2. HARDWARE PIN DEFINITIONS
 // ========================================================================================
+
+// --- YDLIDAR X2 UART Interface (Hardware Serial2) ---
+// YDLIDAR X2 Pinout:
+//   Pin 1 (Red):    VCC (5V from 3A Buck Converter)
+//   Pin 2 (Black):  GND (Common Ground)
+//   Pin 3 (Yellow): TXD (Data Out) -> Connect to ESP32 GPIO 16 (RX2)
+//   Pin 4 (White):  M_EN / M_SCT (Motor Enable) -> Connect to ESP32 GPIO 17 (or 5V for constant run)
+#define PIN_LIDAR_RX          16     // ESP32 RX2 <- YDLIDAR X2 TXD
+#define PIN_LIDAR_M_EN        17     // ESP32 TX2 -> YDLIDAR X2 M_EN (High = Spin motor)
+#define LIDAR_BAUD_RATE       115200
 
 // --- Motor Driver Pins (L298N / TB6612FNG) ---
 #define PIN_MOTOR_LEFT_PWM    12
@@ -67,26 +87,20 @@
 
 // --- 4-Way Ultrasonic Sensors (HC-SR04) ---
 #define PIN_US_FRONT_TRIG     2
-#define PIN_US_FRONT_ECHO     3      // Use 1k/2k resistor voltage divider to 3.3V
-#define PIN_US_LEFT_TRIG      4      // Onboard Flash LED pin on AI-Thinker
+#define PIN_US_FRONT_ECHO     3      // Resistor voltage divider (1k/2k) to 3.3V
+#define PIN_US_LEFT_TRIG      4      // Onboard Flash LED pin
 #define PIN_US_LEFT_ECHO      16
 #define PIN_US_RIGHT_TRIG     0
 #define PIN_US_RIGHT_ECHO     1      // TX0 pin
 #define PIN_US_REAR_TRIG      -1     // Optional rear trigger
 #define PIN_US_REAR_ECHO      -1     // Optional rear echo
 
-// --- LiDAR Interface (Hardware Serial2 UART) ---
-// RPLiDAR A1/A2 / LDS-01 / YDLidar @ 115200 baud
-#define PIN_LIDAR_RX          16     // ESP32 RX2 <- LiDAR TX
-#define PIN_LIDAR_TX          17     // ESP32 TX2 -> LiDAR Motor / MOTO_CTRL (Optional)
-#define LIDAR_BAUD_RATE       115200
-
 // ========================================================================================
 // 3. GLOBAL OBJECTS & STATE VARIABLES
 // ========================================================================================
 
 WebSocketsClient webSocket;
-HardwareSerial LidarSerial(2); // Serial2 for LiDAR
+HardwareSerial LidarSerial(2); // Serial2 for YDLIDAR X2
 
 String sessionToken = "";
 bool isServerAuthenticated = false;
@@ -95,9 +109,9 @@ bool isWsConnected = false;
 unsigned long lastTelemetryTime = 0;
 unsigned long lastCommandTime = 0;
 float currentSpeed = 0.0f;
-float simulatedBattery = 95.0f;
+float simulatedBattery = 96.0f;
 
-// 360-degree LiDAR point cloud (36 sample sectors of 10-degrees each for high Wi-Fi speed)
+// 360-degree LiDAR point cloud (36 sectors of 10-degrees each for high Wi-Fi speed)
 struct LidarPoint {
   float angle;
   float distance;
@@ -176,7 +190,7 @@ void emergencyStop() {
 }
 
 // ========================================================================================
-// 5. ULTRASONIC SENSOR MEASUREMENTS (IN METERS)
+// 5. ULTRASONIC SENSORS (IN METERS)
 // ========================================================================================
 
 void initUltrasonic() {
@@ -205,42 +219,109 @@ float measureDistanceMeters(int trigPin, int echoPin, float fallbackDist = 2.5f)
 }
 
 // ========================================================================================
-// 6. LIDAR POINT CLOUD SCANNER (UART SERIAL2)
+// 6. YDLIDAR X2 NATIVE BINARY PACKET DECODER (115200 BAUD)
 // ========================================================================================
 
 void initLidar() {
+  // Initialize point cloud array
   for (int i = 0; i < 36; i++) {
     lidarPoints[i].angle = (float)(i * 10);
-    lidarPoints[i].distance = 2.5f + (float)(sin(i * 0.2f) * 0.8f); // Initial smooth boundary
+    lidarPoints[i].distance = 2.5f + (float)(sin(i * 0.2f) * 0.5f);
   }
 
-  // Initialize Serial2 for LiDAR UART
-  LidarSerial.begin(LIDAR_BAUD_RATE, SERIAL_8N1, PIN_LIDAR_RX, PIN_LIDAR_TX);
-  Serial.println("[LIDAR] Hardware UART Serial2 initialized @ 115200 baud.");
+  // Turn ON the YDLIDAR X2 motor
+  if (PIN_LIDAR_M_EN >= 0) {
+    pinMode(PIN_LIDAR_M_EN, OUTPUT);
+    digitalWrite(PIN_LIDAR_M_EN, HIGH);
+    Serial.println("[YDLIDAR X2] Motor Enable set to HIGH (Motor Spinning).");
+  }
+
+  // Initialize Serial2 for YDLIDAR X2 UART
+  LidarSerial.begin(LIDAR_BAUD_RATE, SERIAL_8N1, PIN_LIDAR_RX, -1);
+  Serial.println("[YDLIDAR X2] Hardware UART Serial2 initialized @ 115200 baud.");
 }
 
-void readLidarData() {
-  // Read incoming packets from physical LiDAR
-  while (LidarSerial.available() >= 5) {
-    uint8_t b0 = LidarSerial.read();
+void readYdLidarData() {
+  // Non-blocking state machine for YDLIDAR X2 packet protocol (Sync: 0xAA 0x55)
+  while (LidarSerial.available() > 0) {
+    static int state = 0;
+    static uint8_t ct = 0;
+    static uint8_t lsn = 0;
+    static uint16_t fsa = 0;
+    static uint16_t lsa = 0;
+    static uint16_t cs = 0;
+    static uint8_t sampleBuf[128];
+    static int sampleIndex = 0;
+    static int expectedBytes = 0;
 
-    // RPLiDAR Standard Express Header / Sample Check
-    if ((b0 & 0x01) == 0x01 && ((b0 >> 1) & 0x01) != 0x01) {
-      uint8_t b1 = LidarSerial.read();
-      uint8_t b2 = LidarSerial.read();
-      uint8_t b3 = LidarSerial.read();
-      uint8_t b4 = LidarSerial.read();
+    uint8_t b = LidarSerial.read();
 
-      // Extract 15-bit Angle: (b1 >> 1) | (b2 << 7) in 64th degrees
-      float angleDeg = (float)(((b1 >> 1) | (b2 << 7)) / 64.0f);
+    if (state == 0) {
+      if (b == 0xAA) state = 1;
+    } else if (state == 1) {
+      if (b == 0x55) {
+        state = 2; // Found 0xAA 0x55 sync header
+      } else {
+        state = (b == 0xAA) ? 1 : 0;
+      }
+    } else if (state == 2) {
+      ct = b; // Package Type (0x00 = Point cloud, 0x01 = Zero angle)
+      state = 3;
+    } else if (state == 3) {
+      lsn = b; // Sample quantity in this packet (typically 10 to 40)
+      if (lsn > 0 && lsn <= 55) {
+        expectedBytes = lsn * 2;
+        sampleIndex = 0;
+        state = 4;
+      } else {
+        state = 0;
+      }
+    } else if (state == 4) {
+      fsa = b; // FSA Start Angle Low Byte
+      state = 5;
+    } else if (state == 5) {
+      fsa |= ((uint16_t)b << 8); // FSA Start Angle High Byte
+      state = 6;
+    } else if (state == 6) {
+      lsa = b; // LSA End Angle Low Byte
+      state = 7;
+    } else if (state == 7) {
+      lsa |= ((uint16_t)b << 8); // LSA End Angle High Byte
+      state = 8;
+    } else if (state == 8) {
+      cs = b; // Check Code Low
+      state = 9;
+    } else if (state == 9) {
+      cs |= ((uint16_t)b << 8); // Check Code High
+      state = 10;
+    } else if (state == 10) {
+      sampleBuf[sampleIndex++] = b;
+      if (sampleIndex >= expectedBytes) {
+        // Complete YDLIDAR X2 packet received!
+        float angleFSA = (float)((fsa >> 1)) / 64.0f;
+        float angleLSA = (float)((lsa >> 1)) / 64.0f;
 
-      // Extract 14-bit Distance: (b3 | (b4 << 8)) / 4.0 in millimeters
-      float distM = (float)((b3 | (b4 << 8)) / 4000.0f);
+        float diffAngle = angleLSA - angleFSA;
+        if (diffAngle < 0.0f) diffAngle += 360.0f;
 
-      if (distM > 0.1f && distM < 12.0f && angleDeg >= 0.0f && angleDeg < 360.0f) {
-        int bucketIndex = (int)(angleDeg / 10.0f) % 36;
-        lidarPoints[bucketIndex].angle = (float)(bucketIndex * 10);
-        lidarPoints[bucketIndex].distance = distM;
+        // Process distance samples and populate sectors
+        for (int i = 0; i < lsn; i++) {
+          uint16_t rawDist = (uint16_t)sampleBuf[2 * i] | ((uint16_t)sampleBuf[2 * i + 1] << 8);
+          float distM = (float)(rawDist) / 4000.0f; // Distance in meters
+
+          float angle = angleFSA;
+          if (lsn > 1) {
+            angle = angleFSA + (diffAngle / (float)(lsn - 1)) * (float)i;
+          }
+          if (angle >= 360.0f) angle -= 360.0f;
+
+          if (distM >= 0.08f && distM <= 8.0f) {
+            int bucket = ((int)(angle / 10.0f)) % 36;
+            lidarPoints[bucket].angle = (float)(bucket * 10);
+            lidarPoints[bucket].distance = distM;
+          }
+        }
+        state = 0; // Ready for next packet
       }
     }
   }
@@ -267,12 +348,12 @@ void connectWiFi() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println();
-    Serial.println("[WIFI] Wi-Fi Connected Successfully!");
+    Serial.println("[WIFI] Wi-Fi Connected Successfully to ZORO!");
     Serial.print("[WIFI] ESP32 IP Address: ");
     Serial.println(WiFi.localIP());
   } else {
     Serial.println();
-    Serial.println("[WIFI] Failed to connect to Wi-Fi. Check SSID and Password.");
+    Serial.println("[WIFI] Failed to connect to Wi-Fi ZORO. Check password and router.");
   }
 }
 
@@ -287,7 +368,7 @@ bool authenticateWithLaptop() {
   http.begin(authUrl);
   http.addHeader("Content-Type", "application/json");
 
-  // Create authentication JSON payload
+  // Create authentication JSON payload with your API key
   StaticJsonDocument<256> authDoc;
   authDoc["robot_id"] = ROBOT_ID;
   authDoc["api_key"] = ROBOT_API_KEY;
@@ -299,7 +380,7 @@ bool authenticateWithLaptop() {
 
   if (httpCode == 200 || httpCode == 201) {
     String response = http.getString();
-    Serial.println("[AUTH] Handshake SUCCESS! Response:");
+    Serial.println("[AUTH] Handshake SUCCESS! Authenticated with Laptop:");
     Serial.println(response);
 
     StaticJsonDocument<512> respDoc;
@@ -350,7 +431,6 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       StaticJsonDocument<512> cmdDoc;
       DeserializationError err = deserializeJson(cmdDoc, msg);
       if (!err) {
-        String msgType = cmdDoc["type"].as<String>();
         String command = cmdDoc["command"].as<String>();
         int speedPwm = cmdDoc["speed"].isNull() ? 200 : (int)(cmdDoc["speed"].as<float>() * 255.0f);
         if (speedPwm <= 0) speedPwm = 200;
@@ -399,7 +479,7 @@ void connectWebSocket() {
 }
 
 // ========================================================================================
-// 9. REAL-TIME TELEMETRY & LIDAR SLAM TRANSMISSION (10Hz)
+// 9. REAL-TIME TELEMETRY & YDLIDAR SLAM TRANSMISSION (10Hz)
 // ========================================================================================
 
 void sendTelemetryAndLidar() {
@@ -415,7 +495,7 @@ void sendTelemetryAndLidar() {
   float rightDist = measureDistanceMeters(PIN_US_RIGHT_TRIG, PIN_US_RIGHT_ECHO, 1.80f);
   float rearDist  = measureDistanceMeters(PIN_US_REAR_TRIG, PIN_US_REAR_ECHO, 2.20f);
 
-  // Build JSON telemetry packet
+  // Build JSON telemetry packet for Laptop SLAM Engine
   StaticJsonDocument<2048> doc;
   doc["type"] = "telemetry";
   doc["robot_id"] = ROBOT_ID;
@@ -423,7 +503,7 @@ void sendTelemetryAndLidar() {
   doc["battery"] = (int)simulatedBattery;
   doc["speed"] = currentSpeed;
 
-  // Ultrasonic sensor sub-object
+  // Ultrasonic sensor readings
   JsonObject usObj = doc.createNestedObject("ultrasonic");
   usObj["front"] = frontDist;
   usObj["left"] = leftDist;
@@ -433,8 +513,9 @@ void sendTelemetryAndLidar() {
   // LiDAR status
   JsonObject lidarObj = doc.createNestedObject("lidar");
   lidarObj["status"] = "ACTIVE";
+  lidarObj["model"] = "YDLIDAR X2";
 
-  // Transmit 360-degree point cloud directly to Laptop SLAM Mapping Engine
+  // Transmit 360-degree YDLIDAR X2 point cloud directly to Laptop SLAM Mapping Engine
   JsonArray pointsArr = doc.createNestedArray("points");
   for (int i = 0; i < 36; i++) {
     JsonObject p = pointsArr.createNestedObject();
@@ -442,7 +523,7 @@ void sendTelemetryAndLidar() {
     p["distance"] = lidarPoints[i].distance;
   }
 
-  // Granular hardware health indicators
+  // Hardware health indicators
   JsonObject hwObj = doc.createNestedObject("hardware");
   hwObj["esp32"] = "ONLINE";
   hwObj["lidar"] = "ACTIVE";
@@ -476,10 +557,11 @@ void setup() {
   delay(1000);
 
   Serial.println("====================================================================");
-  Serial.println(" ROBONAV ESP32 + LIDAR AUTONOMOUS SLAM ROBOT BOOTING UP");
+  Serial.println(" ROBONAV ESP32-CAM + YDLIDAR X2 AUTONOMOUS SLAM ROBOT");
   Serial.println("====================================================================");
-  Serial.println(" Robot ID: " ROBOT_ID);
-  Serial.println(" PC Server Target: http://" PC_SERVER_HOST ":8000");
+  Serial.println(" Robot ID:       " ROBOT_ID);
+  Serial.println(" Wi-Fi Target:   ZORO");
+  Serial.println(" Target PC Host: http://" PC_SERVER_HOST ":8000");
   Serial.println("====================================================================");
 
   // Initialize Peripherals
@@ -487,10 +569,10 @@ void setup() {
   initUltrasonic();
   initLidar();
 
-  // Connect to Wi-Fi
+  // Connect to Wi-Fi ZORO
   connectWiFi();
 
-  // Handshake with laptop using API Key
+  // Handshake with laptop using your API Key
   if (WiFi.status() == WL_CONNECTED) {
     if (authenticateWithLaptop()) {
       connectWebSocket();
@@ -506,7 +588,7 @@ void loop() {
     return;
   }
 
-  // Re-authenticate if server was restarted
+  // Re-authenticate if laptop server was restarted
   if (!isServerAuthenticated) {
     if (authenticateWithLaptop()) {
       connectWebSocket();
@@ -518,8 +600,8 @@ void loop() {
   // Process WebSocket packets
   webSocket.loop();
 
-  // Read continuous UART LiDAR points
-  readLidarData();
+  // Read continuous UART YDLIDAR X2 packets
+  readYdLidarData();
 
   // Transmit 10Hz telemetry and LiDAR points to Laptop for SLAM mapping
   sendTelemetryAndLidar();

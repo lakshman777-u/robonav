@@ -10,8 +10,8 @@
 
 // --- Network & Wi-Fi Configuration ---
 // Set your 2.4GHz Wi-Fi credentials here
-#define WIFI_SSID             "YOUR_WIFI_SSID"
-#define WIFI_PASSWORD         "YOUR_WIFI_PASSWORD"
+#define WIFI_SSID             "ZORO"
+#define WIFI_PASSWORD         "00000000"
 
 // --- PC Robot API Server Configuration ---
 // The IP address and port of your Main PC running the RoboNav FastAPI backend
