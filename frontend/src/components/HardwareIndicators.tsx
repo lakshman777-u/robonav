@@ -1,10 +1,11 @@
-import { Server, Wifi, Camera, Radar, Waves, Cpu, AlertTriangle } from 'lucide-react';
+import { Server, Wifi, Camera, Radar, Cpu, AlertTriangle, Radio } from 'lucide-react';
 import { useRobotStatus } from '../hooks/useRobotStatus';
 
 export const HardwareIndicators = () => {
   const { robotStatus, wsConnected, simulationMode } = useRobotStatus();
 
-  const isRealOnline = robotStatus?.connection_status === 'ONLINE' && !simulationMode;
+  const isBridgeStreaming = robotStatus?.hardware?.udp_bridge === 'STREAMING' || Boolean(robotStatus?.bridge?.active);
+  const isRealOnline = (robotStatus?.connection_status === 'ONLINE' || isBridgeStreaming) && !simulationMode;
   const isOnline = isRealOnline || simulationMode;
 
   const indicators = [
@@ -16,11 +17,18 @@ export const HardwareIndicators = () => {
       color: 'text-green-400 bg-green-500/10 border-green-500/30'
     },
     {
-      label: 'ESP32-CAM',
-      status: isRealOnline ? 'ONLINE' : (simulationMode ? 'SIMULATED' : 'OFFLINE'),
+      label: 'ESP32 DEVKIT',
+      status: isBridgeStreaming ? 'STREAMING' : (isRealOnline ? 'ONLINE' : (simulationMode ? 'SIMULATED' : 'OFFLINE')),
       active: isOnline,
       icon: Wifi,
-      color: isRealOnline ? 'text-green-400 bg-green-500/10 border-green-500/30' : (simulationMode ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30' : 'text-red-400 bg-red-500/10 border-red-500/30')
+      color: isBridgeStreaming ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30 animate-pulse' : (isRealOnline ? 'text-green-400 bg-green-500/10 border-green-500/30' : (simulationMode ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30' : 'text-red-400 bg-red-500/10 border-red-500/30'))
+    },
+    {
+      label: 'UDP BRIDGE',
+      status: isBridgeStreaming ? `${robotStatus?.bridge?.scan_hz ? robotStatus.bridge.scan_hz.toFixed(1) : ''} HZ` : (simulationMode ? 'STANDBY' : 'IDLE'),
+      active: isBridgeStreaming || simulationMode,
+      icon: Radio,
+      color: isBridgeStreaming ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
     },
     {
       label: 'WEBSOCKET',
@@ -30,32 +38,32 @@ export const HardwareIndicators = () => {
       color: wsConnected ? 'text-green-400 bg-green-500/10 border-green-500/30' : 'text-red-400 bg-red-500/10 border-red-500/30'
     },
     {
-      label: 'CAMERA',
-      status: isOnline ? 'STREAMING' : 'OFFLINE',
-      active: isOnline,
-      icon: Camera,
-      color: isOnline ? 'text-green-400 bg-green-500/10 border-green-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
-    },
-    {
-      label: 'LIDAR',
-      status: isOnline ? 'ACTIVE' : 'INACTIVE',
-      active: isOnline,
+      label: 'YDLIDAR X2',
+      status: (isBridgeStreaming || isOnline) ? 'ACTIVE' : 'INACTIVE',
+      active: isBridgeStreaming || isOnline,
       icon: Radar,
-      color: isOnline ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
+      color: (isBridgeStreaming || isOnline) ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
     },
     {
-      label: 'ULTRASONIC',
-      status: isOnline ? 'ACTIVE' : 'INACTIVE',
-      active: isOnline,
-      icon: Waves,
-      color: isOnline ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
+      label: 'ROS 2 /scan',
+      status: isBridgeStreaming ? 'PUB 10Hz' : (simulationMode ? 'SIM' : 'OFFLINE'),
+      active: isBridgeStreaming || simulationMode,
+      icon: Radio,
+      color: isBridgeStreaming ? 'text-purple-400 bg-purple-500/10 border-purple-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
+    },
+    {
+      label: 'CAMERA',
+      status: isOnline && !isBridgeStreaming ? 'STREAMING' : 'OFFLINE',
+      active: isOnline && !isBridgeStreaming,
+      icon: Camera,
+      color: isOnline && !isBridgeStreaming ? 'text-green-400 bg-green-500/10 border-green-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
     },
     {
       label: 'MOTOR DRIVER',
-      status: isOnline ? (robotStatus?.state === 'EMERGENCY_STOP' ? 'ESTOP' : 'READY') : 'STOPPED',
-      active: isOnline && robotStatus?.state !== 'EMERGENCY_STOP',
+      status: isOnline && !isBridgeStreaming ? (robotStatus?.state === 'EMERGENCY_STOP' ? 'ESTOP' : 'READY') : 'STOPPED',
+      active: isOnline && !isBridgeStreaming && robotStatus?.state !== 'EMERGENCY_STOP',
       icon: Cpu,
-      color: (isOnline && robotStatus?.state !== 'EMERGENCY_STOP') ? 'text-purple-400 bg-purple-500/10 border-purple-500/30' : 'text-red-400 bg-red-500/10 border-red-500/30'
+      color: (isOnline && !isBridgeStreaming && robotStatus?.state !== 'EMERGENCY_STOP') ? 'text-purple-400 bg-purple-500/10 border-purple-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
     }
   ];
 
@@ -66,14 +74,14 @@ export const HardwareIndicators = () => {
         <div className="px-4 py-2 rounded-xl bg-red-950/70 border border-red-500/50 flex items-center justify-between text-xs font-mono font-bold text-red-300 shadow-lg animate-pulse">
           <div className="flex items-center gap-2">
             <AlertTriangle size={16} className="text-red-400" />
-            <span>⚠ ROBOT CONNECTION LOST — ESP32-CAM OFFLINE</span>
+            <span>⚠ ROBOT CONNECTION LOST — ESP32 OFFLINE</span>
           </div>
-          <span className="text-[10px] text-red-400/80 uppercase">Motors Inhibited for Safety</span>
+          <span className="text-[10px] text-red-400/80 uppercase">Waiting for UDP / Wi-Fi packets</span>
         </div>
       )}
 
       {/* Grid of hardware status pills */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
         {indicators.map((ind) => {
           const Icon = ind.icon;
           return (

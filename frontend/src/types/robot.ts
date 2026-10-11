@@ -8,6 +8,21 @@ export interface HardwareStatus {
   lidar: string;
   ultrasonic: string;
   motor_controller: string;
+  udp_bridge?: string;
+}
+
+export interface BridgeMetrics {
+  active: boolean;
+  last_seen: number;
+  robot_id: string;
+  udp_packets_rx: number;
+  udp_bytes_rx: number;
+  dropped_packets: number;
+  scans_published: number;
+  scan_hz: number;
+  wifi_rssi: number;
+  esp32_crc_errors: number;
+  sender_ip: string;
 }
 
 export interface RobotStatus {
@@ -27,6 +42,7 @@ export interface RobotStatus {
   estimated_time_remaining: number;
   last_heartbeat?: string;
   hardware?: HardwareStatus;
+  bridge?: BridgeMetrics;
 }
 
 export interface SensorData {
@@ -37,6 +53,7 @@ export interface SensorData {
     range: number; 
     rays: Array<{angle: number; distance: number}>;
     status?: string;
+    packets?: number;
   };
   camera: { 
     connected: boolean; 
@@ -54,4 +71,5 @@ export interface SensorData {
     rear: number; 
   };
   glass_detected: boolean;
+  bridge?: BridgeMetrics;
 }

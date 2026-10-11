@@ -148,22 +148,24 @@ async def seed_data():
             esp32_robot.api_key_hash = hash_api_key(user_esp32_key)
             esp32_robot.api_key_prefix = "rb_live_"
             
-        # Backward compatibility for ROBOT-001 alias if needed
-        result_old = await session.execute(
-            select(Robot).where(Robot.robot_id == "ROBOT-001")
+        # Create or update ESP32 DevKit LiDAR Bridge robot
+        result_devkit = await session.execute(
+            select(Robot).where(Robot.robot_id == "ESP32DEVKIT-001")
         )
-        robot_old = result_old.scalars().first()
-        if not robot_old:
-            robot_old = Robot(
-                robot_id="ROBOT-001",
-                name="Autonomous Robot 01 (Legacy Alias)",
-                robot_type="ESP32-CAM",
+        devkit_robot = result_devkit.scalars().first()
+        if not devkit_robot:
+            devkit_robot = Robot(
+                robot_id="ESP32DEVKIT-001",
+                name="ESP32 DevKit LiDAR Bridge",
+                robot_type="ESP32-DEVKIT",
                 api_key_hash=hash_api_key(user_esp32_key),
                 api_key_prefix="rb_live_"
             )
-            session.add(robot_old)
+            session.add(devkit_robot)
         else:
-            robot_old.api_key_hash = hash_api_key(user_esp32_key)
-            robot_old.api_key_prefix = "rb_live_"
-            
+            devkit_robot.name = "ESP32 DevKit LiDAR Bridge"
+            devkit_robot.robot_type = "ESP32-DEVKIT"
+            devkit_robot.api_key_hash = hash_api_key(user_esp32_key)
+            devkit_robot.api_key_prefix = "rb_live_"
+
         await session.commit()

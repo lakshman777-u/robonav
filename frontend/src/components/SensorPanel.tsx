@@ -1,4 +1,4 @@
-import { Radar, Camera, Waves, ShieldAlert, CheckCircle2, AlertTriangle, Eye } from 'lucide-react';
+import { Radar, Camera, Waves, ShieldAlert, AlertTriangle, Eye, Radio } from 'lucide-react';
 import { useRobotStatus } from '../hooks/useRobotStatus';
 
 export const SensorPanel = () => {
@@ -12,7 +12,7 @@ export const SensorPanel = () => {
     );
   }
 
-  const { lidar, camera, ultrasonic, glass_detected } = sensorData;
+  const { lidar, camera, ultrasonic, glass_detected, bridge } = sensorData;
 
   const getDistanceColor = (dist: number) => {
     if (dist < 0.35) return 'text-red-400 bg-red-950/40 border-red-500/50';
@@ -39,12 +39,46 @@ export const SensorPanel = () => {
         {/* LiDAR Status */}
         <div className="flex justify-between items-center bg-slate-950/60 p-2.5 rounded-xl border border-white/5">
           <span className="text-gray-400 flex items-center gap-2">
-            <Radar size={15} className="text-cyan-400" /> 2D LiDAR (360° SLAM)
+            <Radar size={15} className="text-cyan-400" /> YDLIDAR X2 (360° SLAM)
           </span>
           <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${lidar.active ? 'text-green-400 bg-green-500/10 border-green-500/30' : 'text-red-400 bg-red-500/10 border-red-500/30'}`}>
-            {lidar.active ? 'ACTIVE (10 Hz)' : 'INACTIVE'}
+            {lidar.active ? `ACTIVE (${lidar.scan_rate ? lidar.scan_rate.toFixed(1) : '10'} Hz)` : 'INACTIVE'}
           </span>
         </div>
+
+        {/* Wireless UDP Bridge Telemetry */}
+        {bridge && (
+          <div className="bg-slate-950/70 p-3 rounded-xl border border-cyan-500/20 space-y-2">
+            <div className="flex justify-between items-center text-[11px] text-cyan-300 font-bold">
+              <span className="flex items-center gap-1.5">
+                <Radio size={13} className="text-cyan-400 animate-pulse" /> ESP32 UDP Telemetry
+              </span>
+              <span className="text-[10px] text-cyan-400/80">
+                {bridge.sender_ip !== 'none' ? bridge.sender_ip : 'Port 4210'}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+              <div className="bg-slate-900/80 p-1.5 rounded-lg border border-white/5">
+                <div className="text-gray-400 text-[9px]">RX PACKETS</div>
+                <div className="font-bold text-white">{bridge.udp_packets_rx.toLocaleString()}</div>
+              </div>
+              <div className="bg-slate-900/80 p-1.5 rounded-lg border border-white/5">
+                <div className="text-gray-400 text-[9px]">SCAN RATE</div>
+                <div className="font-bold text-cyan-400">{bridge.scan_hz.toFixed(1)} Hz</div>
+              </div>
+              <div className="bg-slate-900/80 p-1.5 rounded-lg border border-white/5">
+                <div className="text-gray-400 text-[9px]">DROPPED</div>
+                <div className={`font-bold ${bridge.dropped_packets > 0 ? 'text-amber-400' : 'text-green-400'}`}>
+                  {bridge.dropped_packets}
+                </div>
+              </div>
+              <div className="bg-slate-900/80 p-1.5 rounded-lg border border-white/5">
+                <div className="text-gray-400 text-[9px]">WIFI RSSI</div>
+                <div className="font-bold text-emerald-400">{bridge.wifi_rssi} dBm</div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Camera Vision Status */}
         <div className="flex justify-between items-center bg-slate-950/60 p-2.5 rounded-xl border border-white/5">

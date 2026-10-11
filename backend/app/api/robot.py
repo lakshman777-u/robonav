@@ -68,17 +68,20 @@ async def robot_auth(req: RobotAuthRequest, db: AsyncSession = Depends(get_db)):
 async def read_robot_status(robot_id: Optional[str] = None, current_user: Optional[User] = Depends(get_current_user)):
     status = get_status()
     # Augment with hardware indicators
-    is_connected = manager.robot_authenticated and (manager.robot_connection is not None)
+    is_bridge_active = (time.time() - bridge_metrics["last_seen"] < 3.0) if bridge_metrics["last_seen"] > 0 else False
+    is_connected = (manager.robot_authenticated and (manager.robot_connection is not None)) or is_bridge_active
     status["connection_status"] = "ONLINE" if is_connected else ("ONLINE" if simulator.is_running else "OFFLINE")
     status["hardware"] = {
         "pc_server": "ONLINE",
         "esp32": "ONLINE" if is_connected else ("STANDBY" if simulator.is_running else "OFFLINE"),
-        "websocket": "CONNECTED" if is_connected else ("CONNECTED" if simulator.is_running else "DISCONNECTED"),
-        "camera": "STREAMING" if (is_connected or simulator.is_running) else "OFFLINE",
-        "lidar": "ACTIVE" if (is_connected or simulator.is_running) else "INACTIVE",
-        "ultrasonic": "ACTIVE" if (is_connected or simulator.is_running) else "INACTIVE",
-        "motor_controller": "READY" if (is_connected or simulator.is_running) else "STOPPED"
+        "websocket": "CONNECTED" if (manager.robot_authenticated or is_connected) else ("CONNECTED" if simulator.is_running else "DISCONNECTED"),
+        "camera": "STREAMING" if (manager.robot_authenticated or simulator.is_running) else "OFFLINE",
+        "lidar": "ACTIVE" if (is_bridge_active or is_connected or simulator.is_running) else "INACTIVE",
+        "ultrasonic": "ACTIVE" if (manager.robot_authenticated or simulator.is_running) else "INACTIVE",
+        "motor_controller": "READY" if (manager.robot_authenticated or simulator.is_running) else "STANDBY",
+        "udp_bridge": "STREAMING" if is_bridge_active else "IDLE"
     }
+    status["bridge"] = bridge_metrics
     return status
 
 # Telemetry endpoint
@@ -87,13 +90,14 @@ async def read_robot_status(robot_id: Optional[str] = None, current_user: Option
 async def get_robot_telemetry(current_user: Optional[User] = Depends(get_current_user)):
     status = get_status()
     vid_status = video_service.get_status()
-    is_connected = manager.robot_authenticated and (manager.robot_connection is not None)
+    is_bridge_active = (time.time() - bridge_metrics["last_seen"] < 3.0) if bridge_metrics["last_seen"] > 0 else False
+    is_connected = (manager.robot_authenticated and (manager.robot_connection is not None)) or is_bridge_active
     return {
-        "robot_id": "ESP32CAM-001",
+        "robot_id": "ESP32DEVKIT-001" if is_bridge_active else "ESP32CAM-001",
         "timestamp": vid_status.get("timestamp"),
         "connection": "ONLINE" if is_connected else ("SIMULATED" if simulator.is_running else "OFFLINE"),
         "wifi": "CONNECTED" if (is_connected or simulator.is_running) else "DISCONNECTED",
-        "battery": status.get("battery", 82),
+        "battery": status.get("battery", 98),
         "speed": status.get("velocity", 0.0),
         "position": status.get("position", {"x": 2.0, "y": 2.0}),
         "orientation": status.get("orientation", 0.0),
@@ -103,14 +107,15 @@ async def get_robot_telemetry(current_user: Optional[User] = Depends(get_current
             "right": 1.70,
             "rear": 2.10
         },
-        "lidar": {"status": "ACTIVE" if (is_connected or simulator.is_running) else "INACTIVE"},
+        "lidar": {"status": "ACTIVE" if (is_bridge_active or is_connected or simulator.is_running) else "INACTIVE", "hz": bridge_metrics["scan_hz"]},
         "camera": vid_status,
+        "bridge": bridge_metrics,
         "hardware": {
             "esp32": "ONLINE" if is_connected else ("STANDBY" if simulator.is_running else "OFFLINE"),
-            "camera": "STREAMING" if (is_connected or simulator.is_running) else "OFFLINE",
-            "lidar": "ACTIVE" if (is_connected or simulator.is_running) else "INACTIVE",
-            "ultrasonic": "ACTIVE" if (is_connected or simulator.is_running) else "INACTIVE",
-            "motor_controller": "READY" if (is_connected or simulator.is_running) else "STOPPED"
+            "camera": "STREAMING" if (manager.robot_authenticated or simulator.is_running) else "OFFLINE",
+            "lidar": "ACTIVE" if (is_bridge_active or is_connected or simulator.is_running) else "INACTIVE",
+            "ultrasonic": "ACTIVE" if (manager.robot_authenticated or simulator.is_running) else "INACTIVE",
+            "motor_controller": "READY" if (manager.robot_authenticated or simulator.is_running) else "STANDBY"
         }
     }
 
@@ -176,3 +181,73 @@ async def list_robots(db: AsyncSession = Depends(get_db), current_user: User = D
         "type": getattr(r, 'robot_type', 'ESP32-CAM'),
         "status": r.connection_status
     } for r in robots]
+
+# ==============================================================================
+# UDP LIDAR BRIDGE & ROS 2 INTEGRATION
+# ==============================================================================
+import time
+
+bridge_metrics: Dict[str, Any] = {
+    "active": False,
+    "last_seen": 0.0,
+    "robot_id": "ESP32DEVKIT-001",
+    "udp_packets_rx": 0,
+    "udp_bytes_rx": 0,
+    "dropped_packets": 0,
+    "scans_published": 0,
+    "scan_hz": 0.0,
+    "wifi_rssi": 0,
+    "esp32_crc_errors": 0,
+    "sender_ip": "none"
+}
+
+@router.post("/api/bridge/scan")
+async def ingest_bridge_scan(data: Dict[str, Any]):
+    """Receives decoded LiDAR scans from laptop_udp_receiver and updates 2D occupancy SLAM."""
+    now = time.time()
+    bridge_metrics["active"] = True
+    bridge_metrics["last_seen"] = now
+    bridge_metrics["udp_packets_rx"] = data.get("udp_packets_rx", 0)
+    bridge_metrics["udp_bytes_rx"] = data.get("udp_bytes_rx", 0)
+    bridge_metrics["dropped_packets"] = data.get("dropped_packets", 0)
+    bridge_metrics["scans_published"] = data.get("scans_published", 0)
+    bridge_metrics["scan_hz"] = data.get("scan_hz", 0.0)
+    bridge_metrics["wifi_rssi"] = data.get("wifi_rssi", 0)
+    bridge_metrics["esp32_crc_errors"] = data.get("esp32_crc_errors", 0)
+    bridge_metrics["sender_ip"] = data.get("sender_ip", "unknown")
+
+    points = data.get("points", [])
+    if points:
+        from app.services.mapping_service import process_lidar_points
+        from app.services.robot_service import robot_state
+        process_lidar_points(points, robot_state.position, robot_state.orientation)
+
+        # Broadcast live sensor and LiDAR data to all web clients
+        await manager.broadcast_to_browsers({
+            "type": "sensor_data",
+            "data": {
+                "lidar": {
+                    "active": True,
+                    "status": "ACTIVE",
+                    "scan_rate": bridge_metrics["scan_hz"],
+                    "points": len(points),
+                    "range": 8.0,
+                    "rays": points,
+                    "packets": bridge_metrics["udp_packets_rx"]
+                },
+                "camera": video_service.get_status(),
+                "ultrasonic": {"front": 1.25, "left": 2.10, "right": 1.70, "rear": 2.10},
+                "glass_detected": False,
+                "bridge": bridge_metrics
+            }
+        })
+
+    return {"status": "ok", "scans": bridge_metrics["scans_published"]}
+
+@router.get("/api/bridge/status")
+async def get_bridge_status():
+    """Returns telemetry of the wireless UDP LiDAR bridge."""
+    is_active = (time.time() - bridge_metrics["last_seen"] < 3.0) if bridge_metrics["last_seen"] > 0 else False
+    bridge_metrics["active"] = is_active
+    return bridge_metrics
+
