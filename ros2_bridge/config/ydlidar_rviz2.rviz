@@ -8,9 +8,14 @@ Panels:
         - /Status1
         - /Grid1
         - /LaserScan1
+        - /LaserScan1/Status1
+        - /LaserScan1/Topic1
         - /Map1
-      Splitter Ratio: 0.5
-    Tree Height: 557
+        - /Map1/Status1
+        - /Map1/Topic1
+        - /Map1/Update Topic1
+      Splitter Ratio: 0.4955357015132904
+    Tree Height: 285
   - Class: rviz_common/Views
     Expanded:
       - /Current View1
@@ -25,7 +30,7 @@ Visualization Manager:
       Color: 160; 160; 164
       Enabled: true
       Line Style:
-        Line Width: 0.03
+        Line Width: 0.029999999329447746
         Value: Lines
       Name: Grid
       Normal Cell Count: 0
@@ -41,14 +46,14 @@ Visualization Manager:
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
         Max Value: 8
-        Min Value: 0.1
+        Min Value: 0.10000000149011612
         Value: true
       Axis: Z
       Channel Name: intensity
       Class: rviz_default_plugins/LaserScan
       Color: 255; 25; 25
       Color Transformer: FlatColor
-      Decay Time: 0.1
+      Decay Time: 0.10000000149011612
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
@@ -57,21 +62,23 @@ Visualization Manager:
       Min Intensity: 0
       Name: LaserScan
       Position Transformer: XYZ
-      Queue Size: 10
       Selectable: true
       Size (Pixels): 3
-      Size (m): 0.05
-      Style: Flat Squares
+      Size (m): 0.05000000074505806
+      Style: Tiles
       Topic:
         Depth: 5
         Durability Policy: Volatile
-        History Policy: Keep Last
+        Filter size: 10
+        History Policy: Keep All
         Reliability Policy: Best Effort
         Value: /scan
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
-    - Alpha: 0.7
+    - Alpha: 0.699999988079071
+      Binary representation: false
+      Binary threshold: 100
       Class: rviz_default_plugins/Map
       Color Scheme: map
       Draw Behind: false
@@ -80,6 +87,7 @@ Visualization Manager:
       Topic:
         Depth: 5
         Durability Policy: Transient Local
+        Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /map
@@ -94,7 +102,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 18; 24; 38
-    Fixed Frame: map
+    Fixed Frame: odom
     Frame Rate: 30
   Name: root
   Tools:
@@ -112,22 +120,35 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 6.0
+      Distance: 35.101402282714844
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.05999999865889549
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
       Focal Point:
         X: 0
         Y: 0
         Z: 0
       Focal Shape Fixed Size: true
-      Focal Shape Size: 0.05
+      Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
-      Near Clip Distance: 0.01
-      Pitch: 1.5707
+      Near Clip Distance: 0.009999999776482582
+      Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
-      Value: Orbit (rviz)
+      Value: Orbit (rviz_default_plugins)
       Yaw: 0
+    Saved: ~
 Window Geometry:
+  Displays:
+    collapsed: false
   Height: 800
+  Hide Left Dock: false
+  Hide Right Dock: false
+  QMainWindow State: 000000ff00000000fd0000000100000000000001c2000002c4fc0200000002fb000000100044006900730070006c006100790073010000003e000001a9000000ca00fffffffb0000000a0056006900650077007301000001ed00000115000000a600ffffff000002e8000002c400000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Views:
+    collapsed: false
   Width: 1200
-  X: 100
-  Y: 100
+  X: 679
+  Y: 141

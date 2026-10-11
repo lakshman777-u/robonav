@@ -22,6 +22,8 @@ export interface BridgeMetrics {
   scan_hz: number;
   wifi_rssi: number;
   esp32_crc_errors: number;
+  esp32_lidar_rx_bytes?: number;
+  esp32_lidar_packets?: number;
   sender_ip: string;
 }
 

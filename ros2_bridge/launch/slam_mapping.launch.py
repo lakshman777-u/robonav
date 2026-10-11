@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import sys
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess
 from launch.substitutions import LaunchConfiguration
@@ -34,7 +35,7 @@ def generate_launch_description():
 
         # 3. YDLIDAR UDP Receiver Bridge (publishes /scan)
         ExecuteProcess(
-            cmd=['python3', receiver_script_path],
+            cmd=['python3', receiver_script_path, '--mock'] if ('--mock' in sys.argv or '--demo' in sys.argv) else ['python3', receiver_script_path],
             output='screen',
             name='ydlidar_udp_receiver'
         ),

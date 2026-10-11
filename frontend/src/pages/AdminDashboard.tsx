@@ -89,8 +89,10 @@ export const AdminDashboard = () => {
 
   if (!isAdmin) return <Navigate to="/user" replace />;
 
-  const isBridgeStreaming = robotStatus?.hardware?.udp_bridge === 'STREAMING' || Boolean(robotStatus?.bridge?.active);
+  const isBridgeConnected = Boolean(robotStatus?.bridge?.active);
+  const isBridgeStreaming = isBridgeConnected && Boolean((robotStatus?.bridge?.scans_published || 0) > 0 || (robotStatus?.bridge?.scan_hz || 0) > 0 || robotStatus?.hardware?.udp_bridge === 'STREAMING');
   const bridgeHz = robotStatus?.bridge?.scan_hz ? robotStatus.bridge.scan_hz.toFixed(1) : '10.0';
+  const lidarRxBytes = robotStatus?.bridge?.esp32_lidar_rx_bytes ?? 0;
 
   return (
     <div className="h-screen flex text-slate-100 overflow-hidden relative">
@@ -173,34 +175,68 @@ export const AdminDashboard = () => {
             <div className={`flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-mono transition-all ${
               isBridgeStreaming 
                 ? 'bg-cyan-950/60 border-cyan-500/50 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.3)]' 
-                : 'bg-slate-900 border-white/10 text-gray-400'
+                : isBridgeConnected
+                  ? 'bg-sky-950/60 border-sky-500/50 text-sky-300 shadow-[0_0_8px_rgba(14,165,233,0.2)]'
+                  : 'bg-slate-900 border-white/10 text-gray-400'
             }`}>
-              <span className={`w-2 h-2 rounded-full ${isBridgeStreaming ? 'bg-cyan-400 animate-ping' : 'bg-gray-500'}`} />
+              <span className={`w-2 h-2 rounded-full ${
+                isBridgeStreaming 
+                  ? 'bg-cyan-400 animate-ping' 
+                  : isBridgeConnected 
+                    ? 'bg-sky-400' 
+                    : 'bg-gray-500'
+              }`} />
               <span className="font-bold">ESP32 DEVKIT:</span>
-              <span className={isBridgeStreaming ? 'text-green-400 font-black' : 'text-gray-400'}>
-                {isBridgeStreaming ? 'STREAMING' : 'STANDBY'}
+              <span className={
+                isBridgeStreaming 
+                  ? 'text-cyan-300 font-black' 
+                  : isBridgeConnected 
+                    ? 'text-sky-400 font-bold' 
+                    : 'text-gray-400'
+              }>
+                {isBridgeStreaming ? 'STREAMING' : isBridgeConnected ? 'ONLINE (WIFI OK)' : 'STANDBY'}
               </span>
             </div>
 
             <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-mono transition-all ${
               isBridgeStreaming 
-                ? 'bg-purple-950/60 border-purple-500/50 text-purple-300' 
-                : 'bg-slate-900 border-white/10 text-gray-500'
+                ? 'bg-purple-950/60 border-purple-500/50 text-purple-300 shadow-[0_0_8px_rgba(168,85,247,0.2)]' 
+                : isBridgeConnected
+                  ? 'bg-indigo-950/60 border-indigo-500/40 text-indigo-300'
+                  : 'bg-slate-900 border-white/10 text-gray-500'
             }`}>
               <span>UDP BRIDGE:</span>
-              <span className={`font-bold ${isBridgeStreaming ? 'text-purple-300' : 'text-gray-400'}`}>
-                {isBridgeStreaming ? `${bridgeHz} HZ` : '10.0 HZ (IDLE)'}
+              <span className={`font-bold ${isBridgeStreaming ? 'text-purple-300' : isBridgeConnected ? 'text-indigo-300' : 'text-gray-400'}`}>
+                {isBridgeStreaming ? `${bridgeHz} HZ` : isBridgeConnected ? 'PORT 4210' : '10.0 HZ (IDLE)'}
               </span>
             </div>
 
             <div className={`hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-mono transition-all ${
               isBridgeStreaming 
-                ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300' 
-                : 'bg-slate-900 border-white/10 text-gray-500'
+                ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.2)]' 
+                : isBridgeConnected
+                  ? lidarRxBytes <= 1
+                    ? 'bg-amber-950/60 border-amber-500/50 text-amber-300'
+                    : 'bg-blue-950/60 border-blue-500/40 text-blue-300'
+                  : 'bg-slate-900 border-white/10 text-gray-500'
             }`}>
               <span>YDLIDAR X2:</span>
-              <span className={`font-bold ${isBridgeStreaming ? 'text-emerald-400' : 'text-gray-400'}`}>
-                {isBridgeStreaming ? 'ACTIVE' : 'READY'}
+              <span className={`font-bold ${
+                isBridgeStreaming 
+                  ? 'text-emerald-400' 
+                  : isBridgeConnected 
+                    ? lidarRxBytes <= 1
+                      ? 'text-amber-400'
+                      : 'text-blue-400'
+                    : 'text-gray-400'
+              }`}>
+                {isBridgeStreaming 
+                  ? 'ACTIVE' 
+                  : isBridgeConnected 
+                    ? lidarRxBytes <= 1
+                      ? 'NO DATA (CHECK MOTOR / RX)'
+                      : 'CONNECTING...'
+                    : 'READY'}
               </span>
             </div>
           </div>

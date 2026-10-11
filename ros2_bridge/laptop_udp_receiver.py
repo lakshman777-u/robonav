@@ -150,6 +150,8 @@ class YdLidarUdpRosBridge:
         self.esp32_rssi = 0
         self.esp32_uptime = 0
         self.esp32_crc_errors = 0
+        self.esp32_lidar_rx_bytes = 0
+        self.esp32_lidar_packets = 0
         self.scans_published = 0
         self.last_hz_calc_time = time.time()
         self.scans_in_last_interval = 0
@@ -260,6 +262,8 @@ class YdLidarUdpRosBridge:
         self.esp32_rssi = rssi
         self.esp32_uptime = uptime
         self.esp32_crc_errors = crc_errs
+        self.esp32_lidar_rx_bytes = rx_bytes
+        self.esp32_lidar_packets = val_pkts
 
         with self.payload_lock:
             if not self.latest_web_payload:
@@ -273,6 +277,8 @@ class YdLidarUdpRosBridge:
                     "scan_hz": self.current_scan_hz,
                     "wifi_rssi": self.esp32_rssi,
                     "esp32_crc_errors": self.esp32_crc_errors,
+                    "esp32_lidar_rx_bytes": self.esp32_lidar_rx_bytes,
+                    "esp32_lidar_packets": self.esp32_lidar_packets,
                     "sender_ip": self.last_sender[0] if self.last_sender else "unknown",
                     "points": []
                 }
@@ -380,6 +386,8 @@ class YdLidarUdpRosBridge:
                 "scan_hz": self.current_scan_hz,
                 "wifi_rssi": self.esp32_rssi,
                 "esp32_crc_errors": self.esp32_crc_errors,
+                "esp32_lidar_rx_bytes": self.esp32_lidar_rx_bytes,
+                "esp32_lidar_packets": self.esp32_lidar_packets,
                 "sender_ip": self.last_sender[0] if self.last_sender else "unknown",
                 "points": web_points
             }
@@ -419,9 +427,9 @@ class YdLidarUdpRosBridge:
     def _print_status_line(self):
         sender_str = f"{self.last_sender[0]}:{self.last_sender[1]}" if self.last_sender else "No Sender Yet"
         time_since_rx = f"{time.time() - self.last_rx_time:.1f}s ago" if self.last_rx_time else "NEVER"
-        print(f"[UDP BRIDGE] Pkts: {self.total_packets_rx:<6} | Drops: {self.dropped_packets:<3} | "
-              f"Scans: {self.scans_published:<5} ({self.current_scan_hz:>4.1f} Hz) | "
-              f"From: {sender_str} ({time_since_rx}) | RSSI: {self.esp32_rssi} dBm")
+        print(f"[UDP BRIDGE] Pkts: {self.total_packets_rx:<6} | Scans: {self.scans_published:<5} ({self.current_scan_hz:>4.1f} Hz) | "
+              f"LiDAR RX: {self.esp32_lidar_rx_bytes:<4} B ({self.esp32_lidar_packets:<3} pkts) | "
+              f"From: {sender_str} | RSSI: {self.esp32_rssi} dBm")
 
     def stop(self):
         self.running = False

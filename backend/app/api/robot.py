@@ -76,10 +76,10 @@ async def read_robot_status(robot_id: Optional[str] = None, current_user: Option
         "esp32": "ONLINE" if is_connected else ("STANDBY" if simulator.is_running else "OFFLINE"),
         "websocket": "CONNECTED" if (manager.robot_authenticated or is_connected) else ("CONNECTED" if simulator.is_running else "DISCONNECTED"),
         "camera": "STREAMING" if (manager.robot_authenticated or simulator.is_running) else "OFFLINE",
-        "lidar": "ACTIVE" if (is_bridge_active or is_connected or simulator.is_running) else "INACTIVE",
+        "lidar": "ACTIVE" if (is_bridge_active and bridge_metrics["scans_published"] > 0) else ("NO DATA" if is_bridge_active else "INACTIVE"),
         "ultrasonic": "ACTIVE" if (manager.robot_authenticated or simulator.is_running) else "INACTIVE",
         "motor_controller": "READY" if (manager.robot_authenticated or simulator.is_running) else "STANDBY",
-        "udp_bridge": "STREAMING" if is_bridge_active else "IDLE"
+        "udp_bridge": "STREAMING" if (is_bridge_active and bridge_metrics["scans_published"] > 0) else ("ONLINE" if is_bridge_active else "IDLE")
     }
     status["bridge"] = bridge_metrics
     return status
@@ -107,15 +107,16 @@ async def get_robot_telemetry(current_user: Optional[User] = Depends(get_current
             "right": 1.70,
             "rear": 2.10
         },
-        "lidar": {"status": "ACTIVE" if (is_bridge_active or is_connected or simulator.is_running) else "INACTIVE", "hz": bridge_metrics["scan_hz"]},
+        "lidar": {"status": "ACTIVE" if (is_bridge_active and bridge_metrics["scans_published"] > 0) else ("NO DATA" if is_bridge_active else "INACTIVE"), "hz": bridge_metrics["scan_hz"]},
         "camera": vid_status,
         "bridge": bridge_metrics,
         "hardware": {
-            "esp32": "ONLINE" if is_connected else ("STANDBY" if simulator.is_running else "OFFLINE"),
+            "esp32": "STREAMING" if (is_bridge_active and bridge_metrics["scans_published"] > 0) else ("ONLINE" if is_connected else ("STANDBY" if simulator.is_running else "OFFLINE")),
             "camera": "STREAMING" if (manager.robot_authenticated or simulator.is_running) else "OFFLINE",
-            "lidar": "ACTIVE" if (is_bridge_active or is_connected or simulator.is_running) else "INACTIVE",
+            "lidar": "ACTIVE" if (is_bridge_active and bridge_metrics["scans_published"] > 0) else ("NO DATA" if is_bridge_active else "INACTIVE"),
             "ultrasonic": "ACTIVE" if (manager.robot_authenticated or simulator.is_running) else "INACTIVE",
-            "motor_controller": "READY" if (manager.robot_authenticated or simulator.is_running) else "STANDBY"
+            "motor_controller": "READY" if (manager.robot_authenticated or simulator.is_running) else "STANDBY",
+            "udp_bridge": "STREAMING" if (is_bridge_active and bridge_metrics["scans_published"] > 0) else ("ONLINE" if is_bridge_active else "IDLE")
         }
     }
 
@@ -198,6 +199,8 @@ bridge_metrics: Dict[str, Any] = {
     "scan_hz": 0.0,
     "wifi_rssi": 0,
     "esp32_crc_errors": 0,
+    "esp32_lidar_rx_bytes": 0,
+    "esp32_lidar_packets": 0,
     "sender_ip": "none"
 }
 
@@ -214,6 +217,8 @@ async def ingest_bridge_scan(data: Dict[str, Any]):
     bridge_metrics["scan_hz"] = data.get("scan_hz", 0.0)
     bridge_metrics["wifi_rssi"] = data.get("wifi_rssi", 0)
     bridge_metrics["esp32_crc_errors"] = data.get("esp32_crc_errors", 0)
+    bridge_metrics["esp32_lidar_rx_bytes"] = data.get("esp32_lidar_rx_bytes", 0)
+    bridge_metrics["esp32_lidar_packets"] = data.get("esp32_lidar_packets", 0)
     bridge_metrics["sender_ip"] = data.get("sender_ip", "unknown")
 
     points = data.get("points", [])
@@ -222,25 +227,45 @@ async def ingest_bridge_scan(data: Dict[str, Any]):
         from app.services.robot_service import robot_state
         process_lidar_points(points, robot_state.position, robot_state.orientation)
 
-        # Broadcast live sensor and LiDAR data to all web clients
-        await manager.broadcast_to_browsers({
-            "type": "sensor_data",
-            "data": {
-                "lidar": {
-                    "active": True,
-                    "status": "ACTIVE",
-                    "scan_rate": bridge_metrics["scan_hz"],
-                    "points": len(points),
-                    "range": 8.0,
-                    "rays": points,
-                    "packets": bridge_metrics["udp_packets_rx"]
-                },
-                "camera": video_service.get_status(),
-                "ultrasonic": {"front": 1.25, "left": 2.10, "right": 1.70, "rear": 2.10},
-                "glass_detected": False,
-                "bridge": bridge_metrics
-            }
-        })
+    # Always broadcast updated bridge telemetry and robot status to all browser clients
+    from app.services.robot_service import robot_state
+    await manager.broadcast_to_browsers({
+        "type": "robot_status",
+        "data": {
+            **robot_state.to_dict(),
+            "connection_status": "ONLINE",
+            "hardware": {
+                "pc_server": "ONLINE",
+                "esp32": "STREAMING" if bridge_metrics["scans_published"] > 0 else "ONLINE",
+                "websocket": "CONNECTED",
+                "camera": "STREAMING" if (manager.robot_authenticated or simulator.is_running) else "OFFLINE",
+                "lidar": "ACTIVE" if bridge_metrics["scans_published"] > 0 else ("NO DATA" if bridge_metrics.get("esp32_lidar_rx_bytes", 0) <= 1 else "SYNCING"),
+                "ultrasonic": "ACTIVE" if (manager.robot_authenticated or simulator.is_running) else "INACTIVE",
+                "motor_controller": "READY" if (manager.robot_authenticated or simulator.is_running) else "STANDBY",
+                "udp_bridge": "STREAMING" if bridge_metrics["scans_published"] > 0 else "ONLINE"
+            },
+            "bridge": bridge_metrics
+        }
+    })
+
+    await manager.broadcast_to_browsers({
+        "type": "sensor_data",
+        "data": {
+            "lidar": {
+                "active": True,
+                "status": "ACTIVE" if bridge_metrics["scans_published"] > 0 else ("NO DATA" if bridge_metrics.get("esp32_lidar_rx_bytes", 0) <= 1 else "SYNCING"),
+                "scan_rate": bridge_metrics["scan_hz"],
+                "points": len(points),
+                "range": 8.0,
+                "rays": points if points else [],
+                "packets": bridge_metrics["udp_packets_rx"]
+            },
+            "camera": video_service.get_status(),
+            "ultrasonic": {"front": 1.25, "left": 2.10, "right": 1.70, "rear": 2.10},
+            "glass_detected": False,
+            "bridge": bridge_metrics
+        }
+    })
 
     return {"status": "ok", "scans": bridge_metrics["scans_published"]}
 
