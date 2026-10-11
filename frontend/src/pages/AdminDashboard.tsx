@@ -1,6 +1,7 @@
 import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { LayoutDashboard, Map as MapIcon, Scan, Gamepad2, MapPin, Navigation as NavIcon, Radio, Wifi, ScrollText, Settings as SettingsIcon, LogOut, Video, Cpu } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useRobotStatus } from '../hooks/useRobotStatus';
 import { useCarTrim } from '../context/CarTrimContext';
 import { CarTrimSelector } from '../components/CarTrimSelector';
 import { CockpitGauges } from '../components/CockpitGauges';
@@ -84,8 +85,12 @@ const DashboardHome = () => (
 export const AdminDashboard = () => {
   const { logout, isAdmin } = useAuth();
   const { config } = useCarTrim();
+  const { robotStatus } = useRobotStatus();
 
   if (!isAdmin) return <Navigate to="/user" replace />;
+
+  const isBridgeStreaming = robotStatus?.hardware?.udp_bridge === 'STREAMING' || Boolean(robotStatus?.bridge?.active);
+  const bridgeHz = robotStatus?.bridge?.scan_hz ? robotStatus.bridge.scan_hz.toFixed(1) : '10.0';
 
   return (
     <div className="h-screen flex text-slate-100 overflow-hidden relative">
@@ -163,12 +168,40 @@ export const AdminDashboard = () => {
             </Link>
           </div>
 
-          {/* Right: Simulation & Hardware Status */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-white/10 text-xs font-mono">
-              <span className="w-2 h-2 rounded-full animate-ping" style={{ backgroundColor: config.primaryColor }} />
-              <span className="text-gray-300">ESP32 + PC ENGINE:</span>
-              <span className="font-bold text-cyan-400">ACTIVE</span>
+          {/* Right: Real-time Hardware & UDP Bridge Telemetry */}
+          <div className="flex items-center gap-2">
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-mono transition-all ${
+              isBridgeStreaming 
+                ? 'bg-cyan-950/60 border-cyan-500/50 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.3)]' 
+                : 'bg-slate-900 border-white/10 text-gray-400'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${isBridgeStreaming ? 'bg-cyan-400 animate-ping' : 'bg-gray-500'}`} />
+              <span className="font-bold">ESP32 DEVKIT:</span>
+              <span className={isBridgeStreaming ? 'text-green-400 font-black' : 'text-gray-400'}>
+                {isBridgeStreaming ? 'STREAMING' : 'STANDBY'}
+              </span>
+            </div>
+
+            <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-mono transition-all ${
+              isBridgeStreaming 
+                ? 'bg-purple-950/60 border-purple-500/50 text-purple-300' 
+                : 'bg-slate-900 border-white/10 text-gray-500'
+            }`}>
+              <span>UDP BRIDGE:</span>
+              <span className={`font-bold ${isBridgeStreaming ? 'text-purple-300' : 'text-gray-400'}`}>
+                {isBridgeStreaming ? `${bridgeHz} HZ` : '10.0 HZ (IDLE)'}
+              </span>
+            </div>
+
+            <div className={`hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-mono transition-all ${
+              isBridgeStreaming 
+                ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300' 
+                : 'bg-slate-900 border-white/10 text-gray-500'
+            }`}>
+              <span>YDLIDAR X2:</span>
+              <span className={`font-bold ${isBridgeStreaming ? 'text-emerald-400' : 'text-gray-400'}`}>
+                {isBridgeStreaming ? 'ACTIVE' : 'READY'}
+              </span>
             </div>
           </div>
         </div>

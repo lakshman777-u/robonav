@@ -1,5 +1,7 @@
 import zlib
 import json
+import math
+import asyncio
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from app.services.robot_service import robot_state, transition
@@ -97,10 +99,14 @@ def process_lidar_points(points: list, position: dict, orientation: float):
                 updates.append({"x": ox, "y": oy, "val": 100})
                 
     if updates:
-        asyncio.create_task(manager.broadcast_to_browsers({
-            "type": "map_update",
-            "data": {"updates": updates}
-        }))
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(manager.broadcast_to_browsers({
+                "type": "map_update",
+                "data": {"updates": updates}
+            }))
+        except RuntimeError:
+            pass
 
 async def save_map(map_data: dict):
     async with AsyncSessionLocal() as session:

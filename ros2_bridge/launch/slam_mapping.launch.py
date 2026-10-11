@@ -57,3 +57,10 @@ def generate_launch_description():
             output='screen'
         )
     ])
+
+if __name__ == '__main__':
+    import sys
+    from launch import LaunchService
+    ls = LaunchService(argv=sys.argv[1:])
+    ls.include_launch_description(generate_launch_description())
+    sys.exit(ls.run())

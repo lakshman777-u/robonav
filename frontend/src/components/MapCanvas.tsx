@@ -2,7 +2,7 @@ import { useRef, useEffect, MouseEvent } from 'react';
 import { useMap } from '../hooks/useMap';
 import { useRobotStatus } from '../hooks/useRobotStatus';
 import { useCarTrim } from '../context/CarTrimContext';
-import { drawGrid, drawRobot, drawDestination, drawPath, canvasToWorld } from '../utils/mapRenderer';
+import { drawGrid, drawRobot, drawDestination, drawPath, canvasToWorld, drawLidarRays } from '../utils/mapRenderer';
 import { createDestination } from '../services/api';
 import toast from 'react-hot-toast';
 import { Crosshair, ZoomIn, ZoomOut, RotateCcw, Scan } from 'lucide-react';
@@ -10,7 +10,7 @@ import { Crosshair, ZoomIn, ZoomOut, RotateCcw, Scan } from 'lucide-react';
 export const MapCanvas = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { scale, offset, handleWheel, handleMouseDown, handleMouseMove, handleMouseUp } = useMap();
-  const { mapData, robotStatus, destinations, navigationPath } = useRobotStatus();
+  const { mapData, robotStatus, destinations, navigationPath, sensorData } = useRobotStatus();
   const { config } = useCarTrim();
 
   useEffect(() => {
@@ -62,12 +62,19 @@ export const MapCanvas = () => {
         drawRobot(ctx, robotStatus.position.x, robotStatus.position.y, robotStatus.orientation, scale, offset);
       }
 
+      // Draw real-time LiDAR beam points from ESP32 DevKit UDP Bridge
+      if (sensorData?.lidar?.rays && sensorData.lidar.rays.length > 0) {
+        const rx = robotStatus?.position?.x ?? 2.0;
+        const ry = robotStatus?.position?.y ?? 2.0;
+        drawLidarRays(ctx, rx, ry, sensorData.lidar.rays, scale, offset);
+      }
+
       animationFrameId = requestAnimationFrame(render);
     };
 
     render();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [mapData, robotStatus, scale, offset, destinations, navigationPath]);
+  }, [mapData, robotStatus, scale, offset, destinations, navigationPath, sensorData]);
 
   const onCanvasDoubleClick = async (e: MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;

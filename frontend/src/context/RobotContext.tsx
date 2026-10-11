@@ -53,15 +53,27 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
       const onMap = (msg: any) => {
         if (msg.data && msg.data.updates) {
           setMapData((prev) => {
-            if (!prev) return prev;
-            const newGrid = [...prev.occupancy_grid];
+            const width = prev?.width || 400;
+            const height = prev?.height || 300;
+            const newGrid = prev?.occupancy_grid ? [...prev.occupancy_grid] : new Array(width * height).fill(-1);
             msg.data.updates.forEach((u: {x: number, y: number, val: number}) => {
-              const idx = u.y * prev.width + u.x;
+              const idx = u.y * width + u.x;
               if (idx >= 0 && idx < newGrid.length) {
                 newGrid[idx] = u.val;
               }
             });
-            return { ...prev, occupancy_grid: newGrid };
+            const updated: MapData = {
+              map_id: prev?.map_id || 'MAP-LIVE',
+              name: prev?.name || 'Live SLAM Map',
+              resolution: prev?.resolution || 0.05,
+              width,
+              height,
+              origin: prev?.origin || { x: 0, y: 0 },
+              occupancy_grid: newGrid,
+              start_position: prev?.start_position || { x: 2.0, y: 2.0 },
+              status: prev?.status || 'building'
+            };
+            return updated;
           });
         } else if (msg.data && msg.data.occupancy_grid) {
           setMapData(msg.data);

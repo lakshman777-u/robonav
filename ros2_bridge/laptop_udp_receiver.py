@@ -122,8 +122,15 @@ class YdLidarUdpRosBridge:
     def __init__(self, ros_node=None):
         self.ros_node = ros_node
         self.scan_pub = None
+        self.tf_broadcaster = None
         if self.ros_node:
             self.scan_pub = self.ros_node.create_publisher(LaserScan, "/scan", 10)
+            try:
+                from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
+                self.tf_broadcaster = StaticTransformBroadcaster(self.ros_node)
+                self._broadcast_static_transforms()
+            except Exception as e:
+                print(f"[TF2] Warning: Could not setup StaticTransformBroadcaster: {e}")
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -254,6 +261,81 @@ class YdLidarUdpRosBridge:
         self.esp32_uptime = uptime
         self.esp32_crc_errors = crc_errs
 
+        with self.payload_lock:
+            if not self.latest_web_payload:
+                self.latest_web_payload = {
+                    "robot_id": "ESP32DEVKIT-001",
+                    "api_key": DEVICE_API_KEY,
+                    "udp_packets_rx": self.total_packets_rx,
+                    "udp_bytes_rx": self.total_bytes_rx,
+                    "dropped_packets": self.dropped_packets,
+                    "scans_published": self.scans_published,
+                    "scan_hz": self.current_scan_hz,
+                    "wifi_rssi": self.esp32_rssi,
+                    "esp32_crc_errors": self.esp32_crc_errors,
+                    "sender_ip": self.last_sender[0] if self.last_sender else "unknown",
+                    "points": []
+                }
+
+    def _broadcast_static_transforms(self):
+        if not (self.ros_node and self.tf_broadcaster):
+            return
+        try:
+            from geometry_msgs.msg import TransformStamped
+            now_msg = self.ros_node.get_clock().now().to_msg()
+
+            t1 = TransformStamped()
+            t1.header.stamp = now_msg
+            t1.header.frame_id = "odom"
+            t1.child_frame_id = "base_link"
+            t1.transform.rotation.w = 1.0
+
+            t2 = TransformStamped()
+            t2.header.stamp = now_msg
+            t2.header.frame_id = "base_link"
+            t2.child_frame_id = LASER_FRAME_ID
+            t2.transform.rotation.w = 1.0
+
+            self.tf_broadcaster.sendTransform([t1, t2])
+        except Exception:
+            pass
+
+    def run_mock_loop(self):
+        """Generates realistic 360-degree LiDAR range scans at 10 Hz for instant testing."""
+        print("==================================================================")
+        print(" ROBONAV YDLIDAR X2 SIMULATED SCAN GENERATOR (TEST MODE)")
+        print(" ROS 2 /scan Topic:  ACTIVE (/scan @ 10 Hz)")
+        print(f" Web Backend Link:   {BACKEND_API_URL}")
+        print("==================================================================")
+        scan_idx = 0
+        while self.running:
+            scan_idx += 1
+            now = time.time()
+            ranges = []
+            for i in range(NUM_SCAN_BINS):
+                rad = (i * 2.0 * math.pi) / NUM_SCAN_BINS
+                cos_a = math.cos(rad)
+                sin_a = math.sin(rad)
+                cand = []
+                if cos_a > 0.01: cand.append(2.5 / cos_a)
+                elif cos_a < -0.01: cand.append(-2.5 / cos_a)
+                if sin_a > 0.01: cand.append(2.0 / sin_a)
+                elif sin_a < -0.01: cand.append(-2.0 / sin_a)
+                dist = min(cand) if cand else 2.0
+                dist = max(0.12, min(7.5, dist + 0.02 * math.sin(i * 0.2)))
+                ranges.append(round(dist, 3))
+
+            self.total_packets_rx += 16
+            self.total_bytes_rx += 16 * 118
+            self.esp32_rssi = -48
+            self.last_sender = ("127.0.0.1", 4210)
+            self.last_rx_time = now
+            self.current_scan_hz = 10.0
+
+            self._publish_scan({"ranges": ranges, "scan_time": 0.10, "timestamp": now})
+            self._broadcast_static_transforms()
+            time.sleep(0.10)
+
     def _publish_scan(self, scan_data):
         self.scans_published += 1
         self.scans_in_last_interval += 1
@@ -379,7 +461,10 @@ def main(args=None):
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    bridge.run()
+    if "--mock" in sys.argv or "--demo" in sys.argv:
+        bridge.run_mock_loop()
+    else:
+        bridge.run()
 
 
 if __name__ == "__main__":
