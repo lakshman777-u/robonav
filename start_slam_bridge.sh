@@ -9,15 +9,17 @@ elif [ -f "/opt/ros/humble/setup.bash" ]; then
 fi
 
 echo "=================================================================="
-echo " Starting RoboNav YDLIDAR X2 SLAM & RViz2 Wireless Bridge"
-echo " Target Laptop IP: 10.166.2.244  |  UDP Port: 4210"
+echo " Starting RoboNav Laptop Direct USB YDLIDAR X2 SLAM & RViz2"
+echo " LiDAR: Direct USB (/dev/ttyUSB0)  |  ESP32: Wireless WebSocket"
 echo "=================================================================="
 
-# Ensure no orphaned processes hold port 4210
+# Ensure no orphaned processes hold ports or serial devices
 pkill -f "laptop_udp_receiver" 2>/dev/null || true
+pkill -f "ydlidar_direct_driver" 2>/dev/null || true
+pkill -f "ros2_to_esp32_bridge" 2>/dev/null || true
 pkill -f "async_slam_toolbox" 2>/dev/null || true
 sleep 0.5
 
-# Pass arguments (like --mock or --test) if provided
+# Pass arguments (like --mock or --port /dev/ttyUSB1) if provided
 cd "$(dirname "$0")/ros2_bridge"
-python3 launch/slam_mapping.launch.py "$@"
+python3 launch/slam_mapping_direct.launch.py "$@"

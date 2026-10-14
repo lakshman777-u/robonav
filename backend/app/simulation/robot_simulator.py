@@ -192,6 +192,13 @@ class RobotSimulator:
 
     async def run(self):
         while self.is_running:
+            from app.api.robot import bridge_metrics
+            is_hardware_active = (time.time() - bridge_metrics["last_seen"] < 4.0) if bridge_metrics["last_seen"] > 0 else False
+            if is_hardware_active:
+                # Real hardware LiDAR is active! Yield to avoid clobbering real robot position, rays, and maps
+                await asyncio.sleep(0.5)
+                continue
+
             await self.process_commands()
             
             self._update_battery()

@@ -8,7 +8,6 @@ Panels:
         - /Status1
         - /Grid1
         - /LaserScan1
-        - /LaserScan1/Status1
         - /LaserScan1/Topic1
         - /Map1
         - /Map1/Status1
@@ -102,7 +101,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 18; 24; 38
-    Fixed Frame: odom
+    Fixed Frame: laser_frame
     Frame Rate: 30
   Name: root
   Tools:
@@ -120,7 +119,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 35.101402282714844
+      Distance: 25.552352905273438
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -135,10 +134,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5697963237762451
+      Pitch: 0.48979732394218445
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 0
+      Yaw: 0.32000091671943665
     Saved: ~
 Window Geometry:
   Displays:

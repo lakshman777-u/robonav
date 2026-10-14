@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.database import init_db
-from app.api import auth, robot, api_keys, mapping, destinations, navigation, telemetry
+from app.api import auth, robot, api_keys, mapping, destinations, navigation, telemetry, lidar
 from app.ws import browser, robot as ws_robot
 from app.simulation.robot_simulator import simulator
 from app.security.authentication import require_admin, User
@@ -23,6 +23,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(robot.router)
+app.include_router(lidar.router)
 app.include_router(api_keys.router)
 app.include_router(mapping.router)
 app.include_router(destinations.router)

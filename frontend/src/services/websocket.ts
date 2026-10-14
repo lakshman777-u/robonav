@@ -9,15 +9,15 @@ class WebSocketService {
   private handlers = new Map<string, WSCallback[]>();
   private state: 'connecting' | 'connected' | 'disconnected' = 'disconnected';
 
-  connect(token: string) {
+  connect(token?: string) {
     if (this.state === 'connected' || this.state === 'connecting') return;
-    this.token = token;
+    this.token = token || this.token || 'anonymous';
     this.state = 'connecting';
     this.initWs();
   }
 
   private initWs() {
-    if (!this.token) return;
+    if (!this.token) this.token = 'anonymous';
 
     // Check if running on GitHub Pages or static host without local backend
     const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -30,19 +30,20 @@ class WebSocketService {
     
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    const url = env.VITE_WS_URL || `${protocol}//${host}/ws/browser?token=${this.token}`;
+    const url = env.VITE_WS_URL || `${protocol}//${host}/ws/browser?token=${encodeURIComponent(this.token)}`;
     
     try {
       this.ws = new WebSocket(url);
     } catch (e) {
       this.state = 'disconnected';
+      this.handleReconnect();
       return;
     }
 
     this.ws.onopen = () => {
       this.state = 'connected';
       this.reconnectAttempts = 0;
-      console.log('WebSocket connected');
+      console.log('WebSocket connected to RoboNav stream');
     };
 
     this.ws.onmessage = (event) => {
@@ -63,21 +64,17 @@ class WebSocketService {
     };
 
     this.ws.onerror = (error) => {
-      console.error('WebSocket error', error);
+      console.warn('WebSocket error, will reconnect...', error);
       this.ws?.close();
     };
   }
 
   private handleReconnect() {
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      const timeout = Math.min(this.backoffBase * Math.pow(2, this.reconnectAttempts), 30000);
-      setTimeout(() => {
-        this.reconnectAttempts++;
-        this.initWs();
-      }, timeout);
-    } else {
-      console.error('Max WebSocket reconnect attempts reached.');
-    }
+    const timeout = Math.min(this.backoffBase * Math.pow(1.5, Math.min(this.reconnectAttempts, 8)), 10000);
+    setTimeout(() => {
+      this.reconnectAttempts++;
+      this.initWs();
+    }, timeout);
   }
 
   onMessage(type: string, callback: WSCallback) {

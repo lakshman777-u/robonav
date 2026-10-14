@@ -53,3 +53,17 @@ async def current_nav(current_user: User = Depends(get_current_user)):
             "path": robot_state.current_path
         }
     return {"status": "none"}
+
+@router.get("/goal")
+async def get_navigation_goal():
+    """Returns active or pending Nav2 goal for ROS 2 autonomous navigation stack."""
+    from app.services.navigation_service import get_active_goal
+    goal = get_active_goal()
+    return {"status": "ok", "goal": goal}
+
+@router.post("/reached")
+async def goal_arrived():
+    """Triggered by ROS 2 Nav2 bridge when robot is within tolerance of goal."""
+    from app.services.navigation_service import handle_goal_reached
+    await handle_goal_reached()
+    return {"status": "goal_reached"}

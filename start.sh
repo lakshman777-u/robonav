@@ -14,7 +14,7 @@ sleep 1
 export PATH="$HOME/.local/bin:$PATH"
 cd "$DIR/backend"
 source venv/bin/activate
-nohup python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > "$DIR/backend/backend.log" 2>&1 &
+nohup "$DIR/backend/venv/bin/python" -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > "$DIR/backend/backend.log" 2>&1 &
 BACKEND_PID=$!
 echo "Backend started (PID: $BACKEND_PID) on http://0.0.0.0:8000"
 

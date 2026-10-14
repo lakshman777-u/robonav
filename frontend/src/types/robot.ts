@@ -45,6 +45,13 @@ export interface RobotStatus {
   last_heartbeat?: string;
   hardware?: HardwareStatus;
   bridge?: BridgeMetrics;
+  trajectory?: Array<{ x: number; y: number }>;
+  oled_expression?: string;
+  motors?: {
+    state: string;
+    left_speed: number;
+    right_speed: number;
+  };
 }
 
 export interface SensorData {
@@ -68,10 +75,14 @@ export interface SensorData {
   };
   ultrasonic: { 
     front: number; 
-    left: number; 
-    right: number; 
-    rear: number; 
+    side?: number;
+    left?: number; 
+    right?: number; 
+    rear?: number; 
+    status?: string;
   };
+  oled_expression?: string;
   glass_detected: boolean;
   bridge?: BridgeMetrics;
 }
+

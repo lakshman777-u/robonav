@@ -22,7 +22,8 @@ class RobotState:
             "orientation": self.orientation,
             "battery": self.battery,
             "velocity": self.velocity,
-            "destination": self.destination
+            "destination": self.destination,
+            "trajectory": self.current_path
         }
 
 VALID_TRANSITIONS = {

@@ -1,11 +1,11 @@
 export interface Destination {
-  id: string;
-  dest_id: string;
+  id: string | number;
+  dest_id?: string;
   name: string;
   type: string;
   x: number;
   y: number;
-  status: 'active' | 'inactive';
+  status?: 'active' | 'inactive';
 }
 
 export interface NavigationPath {

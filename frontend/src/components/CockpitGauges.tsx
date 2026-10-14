@@ -1,9 +1,9 @@
 import { useRobotStatus } from '../hooks/useRobotStatus';
 import { useCarTrim } from '../context/CarTrimContext';
-import { Gauge, Zap, Compass, Activity, Disc } from 'lucide-react';
+import { Gauge, Zap, Compass, Activity, Disc, Waves, ShieldAlert, Cpu, Smile, Eye } from 'lucide-react';
 
 export const CockpitGauges = () => {
-  const { robotStatus } = useRobotStatus();
+  const { robotStatus, sensorData } = useRobotStatus();
   const { config, trim } = useCarTrim();
 
   const speed = robotStatus?.velocity || 0; // m/s
@@ -13,6 +13,22 @@ export const CockpitGauges = () => {
   const orientation = robotStatus?.orientation || 0;
   const isMoving = Math.abs(speed) > 0.05;
 
+  // Dual Ultrasonic Data (Front & Side)
+  const frontDist = sensorData?.ultrasonic?.front ?? 1.25;
+  const sideDist = sensorData?.ultrasonic?.side ?? (sensorData?.ultrasonic?.left ?? 2.10);
+  const frontDistCm = Math.round(frontDist * 100);
+  const sideDistCm = Math.round(sideDist * 100);
+
+  // OLED Expression
+  const oledExpr = (robotStatus?.oled_expression || sensorData?.oled_expression || 'ONLINE').toUpperCase();
+
+  // L298N Motors Data
+  const motorData = robotStatus?.motors || {
+    state: isMoving ? 'DRIVING' : 'STOPPED',
+    left_speed: isMoving ? 180 : 0,
+    right_speed: isMoving ? 180 : 0
+  };
+
   // Tachometer angle calculation (-120deg to +120deg)
   const maxSpeed = 0.6; // m/s
   const speedPct = Math.min(1, Math.abs(speed) / maxSpeed);
@@ -21,6 +37,16 @@ export const CockpitGauges = () => {
   // Battery gauge angle calculation
   const batteryPct = battery / 100;
   const batteryNeedleAngle = -120 + batteryPct * 240;
+
+  // Helper for Ultrasonic status color
+  const getSonarStatus = (cm: number) => {
+    if (cm <= 15) return { label: 'CRITICAL (<15cm)', color: 'text-red-400 bg-red-950/60 border-red-500/50', bar: 'bg-red-500' };
+    if (cm <= 30) return { label: 'SLOW (15-30cm)', color: 'text-amber-400 bg-amber-950/60 border-amber-500/50', bar: 'bg-amber-400' };
+    return { label: 'CLEAR (>30cm)', color: 'text-emerald-400 bg-emerald-950/40 border-emerald-500/30', bar: 'bg-emerald-400' };
+  };
+
+  const frontStatus = getSonarStatus(frontDistCm);
+  const sideStatus = getSonarStatus(sideDistCm);
 
   return (
     <div className="glass-panel rounded-2xl p-5 border border-white/10 shadow-2xl relative overflow-hidden space-y-5">
@@ -50,8 +76,8 @@ export const CockpitGauges = () => {
         </div>
 
         <div className="text-right font-mono">
-          <div className="text-[11px] text-gray-400">TELEMETRY LINK</div>
-          <div className="text-xs font-bold text-green-400">ONLINE (10 Hz)</div>
+          <div className="text-[11px] text-gray-400">ESP32 + ROS 2 LINK</div>
+          <div className="text-xs font-bold text-green-400">AUTHENTICATED (10 Hz)</div>
         </div>
       </div>
 
@@ -205,33 +231,185 @@ export const CockpitGauges = () => {
         </div>
       </div>
 
+      {/* Middle Section: Dual Ultrasonic Sensors + 1.3" OLED Robot Face Mirror */}
+      <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Dual HC-SR04 Ultrasonic Sonar Module */}
+        <div className="bg-slate-950/80 rounded-xl p-4 border border-white/5 space-y-3">
+          <div className="flex items-center justify-between border-b border-white/5 pb-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Waves size={15} className="text-cyan-400 animate-pulse" />
+              <span>DUAL HC-SR04 ULTRASONIC RADAR</span>
+            </div>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+              10 Hz FILTERED
+            </span>
+          </div>
+
+          {/* Front Sonar Meter */}
+          <div className="space-y-1.5 bg-slate-900/60 p-2.5 rounded-lg border border-white/5">
+            <div className="flex justify-between items-center text-xs font-mono">
+              <span className="text-gray-300 font-bold flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                FRONT SONAR (GPIO 4/18)
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${frontStatus.color}`}>
+                {frontDistCm} cm • {frontStatus.label}
+              </span>
+            </div>
+            {/* Visual Progress Bar */}
+            <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-white/10">
+              <div
+                className={`h-full transition-all duration-300 rounded-full ${frontStatus.bar}`}
+                style={{ width: `${Math.min(100, (frontDistCm / 200) * 100)}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[9px] text-gray-500 font-mono">
+              <span>0 cm</span>
+              <span className="text-red-400 font-bold">15cm STOP</span>
+              <span className="text-amber-400">30cm SLOW</span>
+              <span>200+ cm</span>
+            </div>
+          </div>
+
+          {/* Side Sonar Meter */}
+          <div className="space-y-1.5 bg-slate-900/60 p-2.5 rounded-lg border border-white/5">
+            <div className="flex justify-between items-center text-xs font-mono">
+              <span className="text-gray-300 font-bold flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-blue-400" />
+                SIDE SONAR (GPIO 5/19)
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${sideStatus.color}`}>
+                {sideDistCm} cm • {sideStatus.label}
+              </span>
+            </div>
+            {/* Visual Progress Bar */}
+            <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-white/10">
+              <div
+                className={`h-full transition-all duration-300 rounded-full ${sideStatus.bar}`}
+                style={{ width: `${Math.min(100, (sideDistCm / 200) * 100)}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[9px] text-gray-500 font-mono">
+              <span>0 cm</span>
+              <span className="text-red-400 font-bold">15cm STOP</span>
+              <span className="text-amber-400">30cm SLOW</span>
+              <span>200+ cm</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 1.3" OLED Robot Face Mirror */}
+        <div className="bg-slate-950/80 rounded-xl p-4 border border-white/5 flex flex-col justify-between">
+          <div className="flex items-center justify-between border-b border-white/5 pb-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Smile size={15} style={{ color: config.primaryColor }} />
+              <span>1.3" I2C OLED FACE (GPIO 13/14)</span>
+            </div>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 text-gray-300">
+              ADDR 0x3C
+            </span>
+          </div>
+
+          {/* Virtual OLED Screen Bezels */}
+          <div className="my-2 p-3 bg-black rounded-lg border-2 border-slate-800 flex flex-col items-center justify-center shadow-inner relative overflow-hidden">
+            {/* Scanlines effect */}
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent pointer-events-none" />
+
+            {/* Expressive Pixel Eyes */}
+            <div className="flex items-center gap-8 my-2">
+              {/* Left Eye */}
+              <div className="relative">
+                {oledExpr === 'SLEEPING' ? (
+                  <div className="w-8 h-1 bg-cyan-400 rounded-full shadow-[0_0_8px_#22d3ee]" />
+                ) : oledExpr === 'DANGER' || oledExpr === 'ERROR' ? (
+                  <div className="w-8 h-6 border-4 border-red-500 rotate-12 rounded-sm shadow-[0_0_8px_#ef4444]" />
+                ) : oledExpr === 'HAPPY' || oledExpr === 'CELEBRATE' ? (
+                  <div className="w-8 h-5 border-t-4 border-l-4 border-r-4 border-cyan-400 rounded-t-full shadow-[0_0_8px_#22d3ee]" />
+                ) : (
+                  <div className="w-8 h-7 bg-cyan-400 rounded-lg shadow-[0_0_10px_#22d3ee] flex items-center justify-center">
+                    <div className="w-2.5 h-2.5 bg-black rounded-full" />
+                  </div>
+                )}
+              </div>
+
+              {/* Right Eye */}
+              <div className="relative">
+                {oledExpr === 'WINK' ? (
+                  <div className="w-8 h-1 bg-cyan-400 rounded-full shadow-[0_0_8px_#22d3ee]" />
+                ) : oledExpr === 'SLEEPING' ? (
+                  <div className="w-8 h-1 bg-cyan-400 rounded-full shadow-[0_0_8px_#22d3ee]" />
+                ) : oledExpr === 'DANGER' || oledExpr === 'ERROR' ? (
+                  <div className="w-8 h-6 border-4 border-red-500 -rotate-12 rounded-sm shadow-[0_0_8px_#ef4444]" />
+                ) : oledExpr === 'HAPPY' || oledExpr === 'CELEBRATE' ? (
+                  <div className="w-8 h-5 border-t-4 border-l-4 border-r-4 border-cyan-400 rounded-t-full shadow-[0_0_8px_#22d3ee]" />
+                ) : (
+                  <div className="w-8 h-7 bg-cyan-400 rounded-lg shadow-[0_0_10px_#22d3ee] flex items-center justify-center">
+                    <div className="w-2.5 h-2.5 bg-black rounded-full" />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Mouth / Smile */}
+            <div className="my-1">
+              {oledExpr === 'HAPPY' || oledExpr === 'CELEBRATE' ? (
+                <div className="w-12 h-3 border-b-4 border-cyan-400 rounded-b-full shadow-[0_0_6px_#22d3ee]" />
+              ) : oledExpr === 'DANGER' || oledExpr === 'ERROR' ? (
+                <div className="w-12 h-3 border-t-4 border-red-500 rounded-t-full shadow-[0_0_6px_#ef4444]" />
+              ) : (
+                <div className="w-10 h-1 bg-cyan-400/80 rounded-full shadow-[0_0_6px_#22d3ee]" />
+              )}
+            </div>
+
+            <div className="mt-2 text-[10px] font-mono text-cyan-400 font-black tracking-widest uppercase">
+              [{oledExpr}]
+            </div>
+          </div>
+
+          {/* L298N Differential Motor Speeds Bar */}
+          <div className="bg-slate-900/60 p-2.5 rounded-lg border border-white/5 flex items-center justify-between text-[11px] font-mono">
+            <div className="flex items-center gap-1.5 text-gray-400">
+              <Cpu size={14} className="text-purple-400" />
+              <span>L298N MOTORS:</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="px-2 py-0.5 rounded bg-slate-950 border border-white/10 text-white font-bold">
+                L: {motorData.left_speed}
+              </span>
+              <span className="px-2 py-0.5 rounded bg-slate-950 border border-white/10 text-white font-bold">
+                R: {motorData.right_speed}
+              </span>
+              <span className={`px-2 py-0.5 rounded font-bold border ${motorData.state === 'EMERGENCY_STOP' ? 'text-red-400 border-red-500/40 bg-red-950/40' : 'text-emerald-400 border-emerald-500/40 bg-emerald-950/40'}`}>
+                {motorData.state}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Bottom Telemetry Strip: 4-Wheel AWD Torque & Orientation HUD */}
       <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
-        {/* 4-Wheel Torque Vectoring Schematic */}
+        {/* Differential Drive Kinematics Schematic */}
         <div className="bg-slate-950/80 rounded-xl p-3 border border-white/5 flex items-center justify-between">
           <div className="space-y-1">
             <div className="text-[10px] text-gray-400 font-bold uppercase flex items-center gap-1">
-              <Disc size={12} style={{ color: config.primaryColor }} /> 4-Wheel AWD Traction
+              <Disc size={12} style={{ color: config.primaryColor }} /> L298N Diff Drive
             </div>
             <div className="text-xs font-mono font-bold text-white">
-              {isMoving ? 'DYNAMIC TORQUE 4WD' : 'STANDBY LOCK'}
+              {isMoving ? 'ACTIVE PWM DRIVE' : 'WATCHDOG BRAKE'}
             </div>
             <div className="text-[10px] text-gray-500 font-mono">
-              Slip Ratio: 0.02% | High Grip
+              Track: 160mm | 65mm Wheels
             </div>
           </div>
 
           {/* Mini Chassis Graphic */}
           <div className="w-14 h-16 border-2 border-slate-700 rounded-lg relative flex items-center justify-center bg-slate-900/60">
-            {/* Front Left */}
-            <div className={`absolute -top-1.5 -left-1.5 w-3 h-5 rounded-sm ${isMoving ? 'bg-green-500 animate-pulse' : 'bg-slate-600'}`} />
-            {/* Front Right */}
-            <div className={`absolute -top-1.5 -right-1.5 w-3 h-5 rounded-sm ${isMoving ? 'bg-green-500 animate-pulse' : 'bg-slate-600'}`} />
-            {/* Rear Left */}
-            <div className={`absolute -bottom-1.5 -left-1.5 w-3 h-5 rounded-sm ${isMoving ? 'bg-green-500 animate-pulse' : 'bg-slate-600'}`} />
-            {/* Rear Right */}
-            <div className={`absolute -bottom-1.5 -right-1.5 w-3 h-5 rounded-sm ${isMoving ? 'bg-green-500 animate-pulse' : 'bg-slate-600'}`} />
-            <span className="text-[9px] font-bold text-gray-400">AWD</span>
+            {/* Left Wheel */}
+            <div className={`absolute top-2 -left-2 w-3 h-10 rounded-sm ${isMoving ? 'bg-cyan-400 animate-pulse' : 'bg-slate-600'}`} />
+            {/* Right Wheel */}
+            <div className={`absolute top-2 -right-2 w-3 h-10 rounded-sm ${isMoving ? 'bg-cyan-400 animate-pulse' : 'bg-slate-600'}`} />
+            <span className="text-[9px] font-bold text-gray-400">DIFF</span>
           </div>
         </div>
 
@@ -273,10 +451,11 @@ export const CockpitGauges = () => {
             </span>
           </div>
           <div className="text-[10px] text-gray-500 font-mono mt-1">
-            Aero Wing: Active Auto-Level
+            Watchdog Timeout: 500ms
           </div>
         </div>
       </div>
     </div>
   );
 };
+

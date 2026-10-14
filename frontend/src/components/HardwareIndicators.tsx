@@ -10,7 +10,7 @@ export const HardwareIndicators = () => {
 
   const indicators = [
     {
-      label: 'PC SERVER',
+      label: 'UBUNTU PC',
       status: 'ONLINE',
       active: true,
       icon: Server,
@@ -18,17 +18,10 @@ export const HardwareIndicators = () => {
     },
     {
       label: 'ESP32 DEVKIT',
-      status: isBridgeStreaming ? 'STREAMING' : (isRealOnline ? 'ONLINE' : (simulationMode ? 'SIMULATED' : 'OFFLINE')),
+      status: isRealOnline ? 'ONLINE' : (isBridgeStreaming ? 'STREAMING' : (simulationMode ? 'SIMULATED' : 'OFFLINE')),
       active: isOnline,
       icon: Wifi,
-      color: isBridgeStreaming ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30 animate-pulse' : (isRealOnline ? 'text-green-400 bg-green-500/10 border-green-500/30' : (simulationMode ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30' : 'text-red-400 bg-red-500/10 border-red-500/30'))
-    },
-    {
-      label: 'UDP BRIDGE',
-      status: isBridgeStreaming ? `${robotStatus?.bridge?.scan_hz ? robotStatus.bridge.scan_hz.toFixed(1) : ''} HZ` : (simulationMode ? 'STANDBY' : 'IDLE'),
-      active: isBridgeStreaming || simulationMode,
-      icon: Radio,
-      color: isBridgeStreaming ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
+      color: isRealOnline ? 'text-green-400 bg-green-500/10 border-green-500/30' : (simulationMode ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30' : 'text-red-400 bg-red-500/10 border-red-500/30')
     },
     {
       label: 'WEBSOCKET',
@@ -45,27 +38,35 @@ export const HardwareIndicators = () => {
       color: (isBridgeStreaming || isOnline) ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
     },
     {
-      label: 'ROS 2 /scan',
-      status: isBridgeStreaming ? 'PUB 10Hz' : (simulationMode ? 'SIM' : 'OFFLINE'),
-      active: isBridgeStreaming || simulationMode,
-      icon: Radio,
-      color: isBridgeStreaming ? 'text-purple-400 bg-purple-500/10 border-purple-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
-    },
-    {
-      label: 'CAMERA',
-      status: isOnline && !isBridgeStreaming ? 'STREAMING' : 'OFFLINE',
-      active: isOnline && !isBridgeStreaming,
-      icon: Camera,
-      color: isOnline && !isBridgeStreaming ? 'text-green-400 bg-green-500/10 border-green-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
-    },
-    {
-      label: 'MOTOR DRIVER',
-      status: isOnline && !isBridgeStreaming ? (robotStatus?.state === 'EMERGENCY_STOP' ? 'ESTOP' : 'READY') : 'STOPPED',
-      active: isOnline && !isBridgeStreaming && robotStatus?.state !== 'EMERGENCY_STOP',
+      label: 'L298N MOTORS',
+      status: isOnline ? (robotStatus?.state === 'EMERGENCY_STOP' ? 'ESTOP' : (robotStatus?.motors?.state || 'READY')) : 'STANDBY',
+      active: isOnline && robotStatus?.state !== 'EMERGENCY_STOP',
       icon: Cpu,
-      color: (isOnline && !isBridgeStreaming && robotStatus?.state !== 'EMERGENCY_STOP') ? 'text-purple-400 bg-purple-500/10 border-purple-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
+      color: (isOnline && robotStatus?.state !== 'EMERGENCY_STOP') ? 'text-purple-400 bg-purple-500/10 border-purple-500/30' : 'text-red-400 bg-red-500/10 border-red-500/30'
+    },
+    {
+      label: 'ULTRASONIC x2',
+      status: isOnline ? 'ACTIVE' : 'OFFLINE',
+      active: isOnline,
+      icon: Radio,
+      color: isOnline ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
+    },
+    {
+      label: '1.3" OLED FACE',
+      status: isOnline ? (robotStatus?.oled_expression || 'ONLINE') : 'STANDBY',
+      active: isOnline,
+      icon: Cpu,
+      color: isOnline ? 'text-amber-400 bg-amber-500/10 border-amber-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
+    },
+    {
+      label: 'NAV2 / SLAM',
+      status: (isOnline || isBridgeStreaming) ? 'READY' : 'OFFLINE',
+      active: isOnline || isBridgeStreaming,
+      icon: Radio,
+      color: (isOnline || isBridgeStreaming) ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'
     }
   ];
+
 
   return (
     <div className="space-y-2">

@@ -11,6 +11,18 @@ router = APIRouter()
 
 @router.websocket("/ws/robot")
 async def robot_websocket_endpoint(websocket: WebSocket, token: str = ""):
+    # Validate robot token
+    if token:
+        try:
+            from app.security.authentication import verify_token
+            payload = verify_token(token)
+            if not payload or payload.get("type") != "robot":
+                await websocket.close(code=4003, reason="Unauthorized")
+                return
+        except Exception:
+            await websocket.close(code=4003, reason="Invalid token")
+            return
+
     await manager.connect_robot(websocket)
     video_service.set_real_robot_status(True)
     transition("CONNECTING")
@@ -45,7 +57,6 @@ async def robot_websocket_endpoint(websocket: WebSocket, token: str = ""):
             robot_state.last_heartbeat = asyncio.get_event_loop().time()
             
             if msg_type in ["telemetry", "robot_status"]:
-                # Process ESP32-CAM telemetry payload
                 t_data = message if msg_type == "telemetry" else message.get("data", {})
                 
                 if "position" in t_data:
@@ -57,12 +68,18 @@ async def robot_websocket_endpoint(websocket: WebSocket, token: str = ""):
                 if "speed" in t_data or "velocity" in t_data:
                     robot_state.velocity = float(t_data.get("speed", t_data.get("velocity", 0.0)))
                     
+                oled_expr = t_data.get("oled_expression", "ONLINE")
+                us_data = t_data.get("ultrasonic", {"front": 1.25, "side": 2.10, "status": "CLEAR"})
+                mot_data = t_data.get("motors", {"state": "STOPPED", "left_speed": 0, "right_speed": 0})
+
                 # Broadcast unified status to browsers
                 await manager.broadcast_to_browsers({
                     "type": "robot_status",
                     "data": {
                         **robot_state.to_dict(),
                         "connection_status": "ONLINE",
+                        "oled_expression": oled_expr,
+                        "motors": mot_data,
                         "hardware": {
                             "pc_server": "ONLINE",
                             "esp32": "ONLINE",
@@ -70,7 +87,7 @@ async def robot_websocket_endpoint(websocket: WebSocket, token: str = ""):
                             "camera": "STREAMING",
                             "lidar": "ACTIVE",
                             "ultrasonic": "ACTIVE",
-                            "motor_controller": "READY"
+                            "motor_controller": "READY" if mot_data.get("state") != "EMERGENCY_STOP" else "STOPPED"
                         }
                     }
                 })
@@ -81,17 +98,17 @@ async def robot_websocket_endpoint(websocket: WebSocket, token: str = ""):
                     if pts:
                         process_lidar_points(pts, robot_state.position, robot_state.orientation)
 
-                # If telemetry includes sensors, forward sensor_data
-                if "ultrasonic" in t_data or "lidar" in t_data:
-                    await manager.broadcast_to_browsers({
-                        "type": "sensor_data",
-                        "data": {
-                            "ultrasonic": t_data.get("ultrasonic", {"front": 1.25, "left": 2.10, "right": 1.70, "rear": 2.10}),
-                            "lidar": t_data.get("lidar", {"active": True, "status": "ACTIVE"}),
-                            "camera": video_service.get_status(),
-                            "glass_detected": t_data.get("glass_detected", False)
-                        }
-                    })
+                # Broadcast real sensor data
+                await manager.broadcast_to_browsers({
+                    "type": "sensor_data",
+                    "data": {
+                        "ultrasonic": us_data,
+                        "lidar": t_data.get("lidar", {"active": True, "status": "ACTIVE"}),
+                        "oled_expression": oled_expr,
+                        "camera": video_service.get_status(),
+                        "glass_detected": t_data.get("glass_detected", False)
+                    }
+                })
                     
             elif msg_type in ["sensor_data", "lidar_scan"]:
                 pts = message.get("points") or message.get("data", {}).get("points")

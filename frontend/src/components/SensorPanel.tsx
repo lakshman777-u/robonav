@@ -90,37 +90,38 @@ export const SensorPanel = () => {
           </span>
         </div>
 
-        {/* 4-Way Ultrasonic Grid */}
+        {/* Dual HC-SR04 Ultrasonic Sonar */}
         <div className="space-y-1.5">
           <div className="flex justify-between items-center text-gray-400 text-[11px]">
             <span className="flex items-center gap-1.5">
-              <Waves size={13} className="text-emerald-400" /> 4-Way Ultrasonic Grid:
+              <Waves size={13} className="text-emerald-400" /> Dual Ultrasonic Sonar:
             </span>
-            <span className="text-[10px] text-gray-500">Echo Range: 0.02 - 4.0m</span>
+            <span className="text-[10px] text-gray-500">Range: 0.02 - 4.0m</span>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <div className={`p-2.5 rounded-xl border flex justify-between items-center ${getDistanceColor(ultrasonic.front)}`}>
-              <span className="text-gray-400">FRONT</span>
-              <span className="font-bold">{ultrasonic.front.toFixed(2)} m</span>
+            <div className={`p-2.5 rounded-xl border flex justify-between items-center ${getDistanceColor(ultrasonic.front ?? 1.25)}`}>
+              <span className="text-gray-400">FRONT (GPIO 4/18)</span>
+              <span className="font-bold">{(ultrasonic.front ?? 1.25).toFixed(2)} m</span>
             </div>
 
-            <div className={`p-2.5 rounded-xl border flex justify-between items-center ${getDistanceColor(ultrasonic.rear)}`}>
-              <span className="text-gray-400">REAR</span>
-              <span className="font-bold">{ultrasonic.rear.toFixed(2)} m</span>
+            <div className={`p-2.5 rounded-xl border flex justify-between items-center ${getDistanceColor(ultrasonic.side ?? ultrasonic.left ?? 2.10)}`}>
+              <span className="text-gray-400">SIDE (GPIO 5/19)</span>
+              <span className="font-bold">{(ultrasonic.side ?? ultrasonic.left ?? 2.10).toFixed(2)} m</span>
             </div>
 
-            <div className={`p-2.5 rounded-xl border flex justify-between items-center ${getDistanceColor(ultrasonic.left)}`}>
+            <div className={`p-2.5 rounded-xl border flex justify-between items-center ${getDistanceColor(ultrasonic.left ?? 2.10)}`}>
               <span className="text-gray-400">LEFT</span>
-              <span className="font-bold">{ultrasonic.left.toFixed(2)} m</span>
+              <span className="font-bold">{(ultrasonic.left ?? 2.10).toFixed(2)} m</span>
             </div>
 
-            <div className={`p-2.5 rounded-xl border flex justify-between items-center ${getDistanceColor(ultrasonic.right)}`}>
+            <div className={`p-2.5 rounded-xl border flex justify-between items-center ${getDistanceColor(ultrasonic.right ?? ultrasonic.rear ?? 1.70)}`}>
               <span className="text-gray-400">RIGHT</span>
-              <span className="font-bold">{ultrasonic.right.toFixed(2)} m</span>
+              <span className="font-bold">{(ultrasonic.right ?? ultrasonic.rear ?? 1.70).toFixed(2)} m</span>
             </div>
           </div>
         </div>
+
 
         {/* Glass / Transparent Obstacle Alert (Requirement #24) */}
         {glass_detected ? (

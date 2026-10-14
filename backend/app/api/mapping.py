@@ -3,11 +3,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import Optional
+from typing import Optional, List
 
 from app.database import AsyncSessionLocal, Map
-from app.security.authentication import get_current_user, require_admin, User
-from app.services.mapping_service import start_mapping, stop_mapping
+from app.security.authentication import get_current_user, get_optional_user, require_admin, User
+from app.services.mapping_service import (
+    start_mapping, stop_mapping, clear_map, load_saved_map,
+    current_map_data, decompress_grid
+)
+from app.services.robot_service import robot_state
 
 router = APIRouter(prefix="/api/maps")
 
@@ -22,85 +26,166 @@ async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
 
-@router.post("")
-async def create_map(map_data: MapCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin)):
-    # Handled by mapping service primarily
-    pass
-
 @router.get("")
 @router.get("/api/map")
-async def list_maps(db: AsyncSession = Depends(get_db), current_user: Optional[User] = Depends(get_current_user)):
-    result = await db.execute(select(Map))
-    maps = result.scalars().all()
-    return [{"id": m.id, "map_id": m.map_id, "name": m.name, "status": m.status} for m in maps]
-
-@router.get("/current")
-async def get_current_map(db: AsyncSession = Depends(get_db), current_user: Optional[User] = Depends(get_current_user)):
+async def list_maps(db: AsyncSession = Depends(get_db), current_user: Optional[User] = Depends(get_optional_user)):
     result = await db.execute(select(Map).order_by(Map.id.desc()))
-    m = result.scalars().first()
-    if not m:
-        return {"id": 1, "map_id": "MAP-001", "name": "Default 2D Map", "status": "active", "occupancy_data": None}
-    occupancy = base64.b64encode(m.occupancy_data).decode('utf-8') if m.occupancy_data else None
-    return {
-        "id": m.id, 
-        "map_id": m.map_id, 
-        "name": m.name, 
-        "resolution": m.resolution, 
+    maps = result.scalars().all()
+    return [{
+        "id": m.id,
+        "map_id": m.map_id,
+        "name": m.name,
+        "resolution": m.resolution,
         "width": m.width,
         "height": m.height,
-        "origin_x": m.origin_x,
-        "origin_y": m.origin_y,
-        "occupancy_data": occupancy,
-        "status": m.status
-    }
+        "status": m.status,
+        "created_at": m.created_at.isoformat() if hasattr(m, 'created_at') and m.created_at else None
+    } for m in maps]
 
-@router.get("/{map_id}")
-async def get_map(map_id: int, db: AsyncSession = Depends(get_db), current_user: Optional[User] = Depends(get_current_user)):
-    result = await db.execute(select(Map).where(Map.id == map_id))
-    m = result.scalar_one_or_none()
-    if not m:
-        raise HTTPException(status_code=404, detail="Map not found")
-        
-    occupancy = base64.b64encode(m.occupancy_data).decode('utf-8') if m.occupancy_data else None
-    
+@router.get("/current")
+async def get_current_map(db: AsyncSession = Depends(get_db)):
+    # 1. Return live in-memory mapping data if active
+    if current_map_data and "grid" in current_map_data:
+        grid = current_map_data["grid"]
+        if grid and isinstance(grid[0], list):
+            flat = [val for row in grid for val in row]
+        else:
+            flat = grid
+        return {
+            "id": 0,
+            "map_id": "MAP-LIVE",
+            "name": current_map_data.get("name", "Live SLAM Map"),
+            "resolution": current_map_data.get("resolution", 0.05),
+            "width": current_map_data.get("width", 400),
+            "height": current_map_data.get("height", 300),
+            "origin_x": current_map_data.get("origin_x", 0.0),
+            "origin_y": current_map_data.get("origin_y", 0.0),
+            "occupancy_grid": flat,
+            "status": "building" if robot_state.state == "MAPPING" else "ready"
+        }
+
+    # 2. Otherwise load the most recently saved map from DB
+    result = await db.execute(select(Map).order_by(Map.id.desc()))
+    m = result.scalars().first()
+    if not m or not m.occupancy_data:
+        # Default empty 400x300 grid
+        return {
+            "id": 1,
+            "map_id": "MAP-001",
+            "name": "Default 2D Map",
+            "resolution": 0.05,
+            "width": 400,
+            "height": 300,
+            "origin_x": 0.0,
+            "origin_y": 0.0,
+            "occupancy_grid": [-1] * (400 * 300),
+            "status": "ready"
+        }
+
+    try:
+        decompressed_2d = decompress_grid(m.occupancy_data)
+        flat = [val for row in decompressed_2d for val in row]
+    except Exception:
+        flat = [-1] * (m.width * m.height)
+
     return {
-        "id": m.id, 
+        "id": m.id,
         "map_id": m.map_id,
-        "name": m.name, 
+        "name": m.name,
         "resolution": m.resolution,
         "width": m.width,
         "height": m.height,
         "origin_x": m.origin_x,
         "origin_y": m.origin_y,
-        "occupancy_data": occupancy,
+        "occupancy_grid": flat,
         "status": m.status
     }
 
-@router.put("/{map_id}")
-async def update_map(map_id: int, map_update: MapUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin)):
+@router.get("/{map_id}")
+async def get_map(map_id: int, db: AsyncSession = Depends(get_db), current_user: Optional[User] = Depends(get_optional_user)):
     result = await db.execute(select(Map).where(Map.id == map_id))
     m = result.scalar_one_or_none()
     if not m:
         raise HTTPException(status_code=404, detail="Map not found")
-        
-    if map_update.name:
-        m.name = map_update.name
-    if map_update.status:
-        m.status = map_update.status
-        
-    await db.commit()
-    return {"status": "updated"}
+
+    flat = []
+    if m.occupancy_data:
+        try:
+            grid_2d = decompress_grid(m.occupancy_data)
+            flat = [val for row in grid_2d for val in row]
+        except Exception:
+            flat = []
+
+    return {
+        "id": m.id,
+        "map_id": m.map_id,
+        "name": m.name,
+        "resolution": m.resolution,
+        "width": m.width,
+        "height": m.height,
+        "origin_x": m.origin_x,
+        "origin_y": m.origin_y,
+        "occupancy_grid": flat,
+        "status": m.status
+    }
 
 @router.post("/start")
 async def api_start_mapping(req: MapCreate, current_user: User = Depends(require_admin)):
     success = await start_mapping(req.name)
     if not success:
         raise HTTPException(status_code=400, detail="Cannot start mapping from current state")
-    return {"status": "mapping_started"}
+    return {"status": "mapping_started", "map_name": req.name}
+
+class MapStopRequest(BaseModel):
+    name: Optional[str] = None
 
 @router.post("/stop")
-async def api_stop_mapping(current_user: User = Depends(require_admin)):
-    success = await stop_mapping()
+async def api_stop_mapping(req: Optional[MapStopRequest] = None, current_user: User = Depends(require_admin)):
+    save_as = req.name if req else None
+    success = await stop_mapping(save_as)
     if not success:
         raise HTTPException(status_code=400, detail="Not currently mapping")
-    return {"status": "mapping_stopped"}
+    return {"status": "mapping_stopped", "name": save_as}
+
+@router.post("/clear")
+async def api_clear_map(current_user: User = Depends(require_admin)):
+    await clear_map()
+    return {"status": "map_cleared"}
+
+@router.delete("/all")
+async def delete_all_saved_maps(db: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin)):
+    from sqlalchemy import delete
+    await clear_map()
+    await db.execute(delete(Map))
+    await db.commit()
+    return {"status": "all_maps_deleted"}
+
+@router.post("/{map_id}/load")
+async def api_load_map(map_id: int, current_user: User = Depends(require_admin)):
+    success = await load_saved_map(map_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Saved map not found or corrupted")
+    return {"status": "map_loaded", "id": map_id}
+
+@router.delete("/{map_id}")
+async def delete_map(map_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin)):
+    result = await db.execute(select(Map).where(Map.id == map_id))
+    m = result.scalar_one_or_none()
+    if not m:
+        raise HTTPException(status_code=404, detail="Map not found")
+
+    # Clean up disk files on laptop server
+    import os
+    try:
+        maps_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../maps"))
+        safe_name = "".join(c if c.isalnum() or c in ('-', '_') else '_' for c in m.name).strip('_')
+        for ext in [".json", ".yaml", ".pgm"]:
+            fpath = os.path.join(maps_dir, f"{safe_name}{ext}")
+            if os.path.exists(fpath):
+                os.remove(fpath)
+    except Exception:
+        pass
+
+    await db.delete(m)
+    await db.commit()
+    return {"status": "deleted", "id": map_id}

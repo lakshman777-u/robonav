@@ -168,4 +168,22 @@ async def seed_data():
             devkit_robot.api_key_hash = hash_api_key(user_esp32_key)
             devkit_robot.api_key_prefix = "rb_live_"
 
+        # Seed the 4 autonomous navigation destinations if not present
+        default_dests = [
+            ("DEST-ENTRANCE", "Entrance", "waypoint", 1.5, 1.5),
+            ("DEST-ROOMA", "Room A", "room", 4.0, 2.0),
+            ("DEST-ROOMB", "Room B", "room", 4.0, 6.0),
+            ("DEST-CHARGING", "Charging Station", "dock", 1.0, 1.0),
+        ]
+        for d_id, d_name, d_type, d_x, d_y in default_dests:
+            d_res = await session.execute(select(Destination).where(Destination.name == d_name))
+            if not d_res.scalars().first():
+                session.add(Destination(
+                    dest_id=d_id,
+                    name=d_name,
+                    type=d_type,
+                    x=d_x,
+                    y=d_y
+                ))
+
         await session.commit()
