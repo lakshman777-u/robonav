@@ -128,22 +128,37 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
     wsService.onMessage('destination_update', onDestUpdate);
     wsService.onMessage('robot_connection_lost', onConnLost);
 
-    // 2. HTTP Polling sync fallback (guarantees live telemetry even if WS reconnects)
-    const syncHttp = async () => {
-      try {
-        const [telemRes, mapRes] = await Promise.allSettled([
-          getRobotTelemetry(),
-          getCurrentMap()
-        ]);
+    // 2. Initial Map Load (single fetch on mount)
+    getCurrentMap().then(res => {
+      if (res?.data && res.data.occupancy_grid) {
+        const md = res.data;
+        setMapData({
+          map_id: md.map_id || 'MAP-LIVE',
+          name: md.name || 'Live SLAM Map',
+          resolution: md.resolution || 0.05,
+          width: md.width || 600,
+          height: md.height || 600,
+          origin: { x: md.origin_x ?? -15.0, y: md.origin_y ?? -15.0 },
+          occupancy_grid: md.occupancy_grid,
+          start_position: { x: 0.0, y: 0.0 },
+          status: md.status || 'building'
+        });
+      }
+    }).catch(() => {});
 
-        if (telemRes.status === 'fulfilled' && telemRes.value?.data) {
-          const td = telemRes.value.data;
+    // 3. Relaxed fallback HTTP telemetry sync only when WebSocket is not connected
+    const syncHttpFallback = async () => {
+      if (wsService.getState() === 'connected') return;
+      try {
+        const telemRes = await getRobotTelemetry();
+        if (telemRes?.data) {
+          const td = telemRes.data;
           setRobotStatus(prev => ({
             robot_id: td.robot_id || prev?.robot_id || 'ESP32DEVKIT-001',
             name: prev?.name || 'Autonomous Robot 01',
             robot_type: prev?.robot_type || 'ESP32-CAM',
             state: td.connection === 'ONLINE' ? (prev?.state || 'IDLE') : (prev?.state || 'IDLE'),
-            connection_status: (td.connection === 'ONLINE' || td.wifi === 'CONNECTED') ? 'ONLINE' : 'ONLINE',
+            connection_status: 'ONLINE',
             battery: td.battery ?? prev?.battery ?? 100,
             charging: false,
             position: td.position || prev?.position || { x: 0.0, y: 0.0 },
@@ -157,48 +172,23 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
             bridge: td.bridge || prev?.bridge,
             trajectory: td.trajectory || prev?.trajectory
           }));
-
-          if (td.lidar?.rays && td.lidar.rays.length > 0) {
-            setSensorData(prev => ({
-              lidar: {
-                active: td.lidar.status === 'ACTIVE' || td.bridge?.scans_published > 0,
-                scan_rate: td.lidar.hz || td.bridge?.scan_hz || 16.0,
-                points: td.lidar.rays?.length || 0,
-                range: 8.0,
-                rays: td.lidar.rays || []
-              },
-              camera: prev?.camera || { connected: true, obstacle_detected: false, obstacle_type: 'none', distance: 0 },
-              ultrasonic: td.ultrasonic || prev?.ultrasonic || { front: 1.25, left: 2.1, right: 1.7, rear: 2.1 },
-              glass_detected: false
-            }));
-          }
-        }
-
-        if (mapRes.status === 'fulfilled' && mapRes.value?.data && mapRes.value.data.occupancy_grid) {
-          const md = mapRes.value.data;
-          setMapData(prev => ({
-            map_id: md.map_id || prev?.map_id || 'MAP-LIVE',
-            name: md.name || prev?.name || 'Live SLAM Map',
-            resolution: md.resolution || 0.05,
-            width: md.width || 600,
-            height: md.height || 600,
-            origin: { x: md.origin_x ?? -15.0, y: md.origin_y ?? -15.0 },
-            occupancy_grid: md.occupancy_grid,
-            start_position: { x: 0.0, y: 0.0 },
-            status: md.status || 'building'
-          }));
         }
       } catch (err) {
-        // Silent catch for HTTP sync
+        // Silent catch for HTTP fallback
       }
     };
 
-    syncHttp();
-    const syncInterval = setInterval(syncHttp, 1200);
+    const syncInterval = setInterval(syncHttpFallback, 4000);
 
     return () => {
       clearInterval(checkConn);
       clearInterval(syncInterval);
+      wsService.offMessage('robot_status', onStatus);
+      wsService.offMessage('sensor_data', onSensor);
+      wsService.offMessage('map_update', onMap);
+      wsService.offMessage('log_event', onLog);
+      wsService.offMessage('destination_update', onDestUpdate);
+      wsService.offMessage('robot_connection_lost', onConnLost);
       wsService.disconnect();
     };
   }, [auth?.token]);

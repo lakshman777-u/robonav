@@ -30,6 +30,11 @@ export const LidarPolarView = ({ maxRangeMeters = 6.0 }: LidarPolarViewProps) =>
     }
   });
 
+  const stateRef = useRef({ rays, isLidarActive, rangeScale, scanHz });
+  useEffect(() => {
+    stateRef.current = { rays, isLidarActive, rangeScale, scanHz };
+  });
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -39,6 +44,7 @@ export const LidarPolarView = ({ maxRangeMeters = 6.0 }: LidarPolarViewProps) =>
     let animId: number;
 
     const render = () => {
+      const { rays: curRays, isLidarActive: curActive, rangeScale: curScale, scanHz: curHz } = stateRef.current;
       const width = canvas.width;
       const height = canvas.height;
       const cx = width / 2;
@@ -61,11 +67,11 @@ export const LidarPolarView = ({ maxRangeMeters = 6.0 }: LidarPolarViewProps) =>
       ctx.fill();
 
       // 2. Concentric Range Rings
-      const ringSteps = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0].filter(r => r <= rangeScale);
+      const ringSteps = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0].filter(r => r <= curScale);
       ringSteps.forEach(r => {
-        const ringRadius = (r / rangeScale) * maxRadius;
-        ctx.strokeStyle = r === rangeScale ? 'rgba(6, 182, 212, 0.4)' : 'rgba(255, 255, 255, 0.08)';
-        ctx.lineWidth = r === rangeScale ? 1.5 : 1;
+        const ringRadius = (r / curScale) * maxRadius;
+        ctx.strokeStyle = r === curScale ? 'rgba(6, 182, 212, 0.4)' : 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = r === curScale ? 1.5 : 1;
         ctx.setLineDash(r % 2 === 0 ? [] : [3, 3]);
         ctx.beginPath();
         ctx.arc(cx, cy, ringRadius, 0, Math.PI * 2);
@@ -113,8 +119,8 @@ export const LidarPolarView = ({ maxRangeMeters = 6.0 }: LidarPolarViewProps) =>
       }
 
       // 4. Rotating Radar Sweep Beam
-      if (isLidarActive) {
-        sweepAngleRef.current = (sweepAngleRef.current + (scanHz * 0.035)) % (Math.PI * 2);
+      if (curActive) {
+        sweepAngleRef.current = (sweepAngleRef.current + (curHz * 0.035)) % (Math.PI * 2);
         const sweepAngle = sweepAngleRef.current;
 
         // Sweep cone trail
@@ -142,46 +148,34 @@ export const LidarPolarView = ({ maxRangeMeters = 6.0 }: LidarPolarViewProps) =>
         ctx.shadowBlur = 0;
       }
 
-      // 5. Draw 360° Room Wall Contours & Obstacle Nodes
-      if (rays && rays.length > 0) {
+      // 5. Draw 360° Solid Wall Contours & Bounce-Backed Area (NO DOTS)
+      if (curRays && curRays.length > 0) {
         interface PolarPoint {
           angleDeg: number;
           dist: number;
           px: number;
           py: number;
-          color: string;
-          glow: string;
         }
 
         const validPolar: PolarPoint[] = [];
 
-        rays.forEach(r => {
-          if (r.distance < 0.12 || r.distance > 8.0) return;
+        curRays.forEach(r => {
+          if (r.distance < 0.15 || r.distance > 8.0) return;
           // YDLIDAR: 0° is forward (UP on screen), clockwise
           const angleDeg = ((r.angle % 360) + 360) % 360;
           const rad = ((angleDeg - 90) * Math.PI) / 180;
-          const distClamped = Math.min(r.distance, rangeScale);
-          const px = cx + (distClamped / rangeScale) * maxRadius * Math.cos(rad);
-          const py = cy + (distClamped / rangeScale) * maxRadius * Math.sin(rad);
+          const distClamped = Math.min(r.distance, curScale);
+          const px = cx + (distClamped / curScale) * maxRadius * Math.cos(rad);
+          const py = cy + (distClamped / curScale) * maxRadius * Math.sin(rad);
 
-          let color = '#06b6d4';
-          let glow = 'rgba(6, 182, 212, 0.8)';
-          if (r.distance < 0.45) {
-            color = '#ef4444';
-            glow = 'rgba(239, 68, 68, 0.9)';
-          } else if (r.distance < 1.0) {
-            color = '#f59e0b';
-            glow = 'rgba(245, 158, 11, 0.8)';
-          }
-
-          validPolar.push({ angleDeg, dist: r.distance, px, py, color, glow });
+          validPolar.push({ angleDeg, dist: r.distance, px, py });
         });
 
         if (validPolar.length >= 4) {
           // Sort rays by angle
           validPolar.sort((a, b) => a.angleDeg - b.angleDeg);
 
-          // 5a. Fill interior room radar floor
+          // 5a. Fill interior room radar floor polygon
           ctx.save();
           ctx.beginPath();
           ctx.moveTo(validPolar[0].px, validPolar[0].py);
@@ -203,7 +197,7 @@ export const LidarPolarView = ({ maxRangeMeters = 6.0 }: LidarPolarViewProps) =>
             const angleDiff = curr.angleDeg - prev.angleDeg;
             const distDiff = Math.abs(curr.dist - prev.dist);
 
-            if (angleDiff <= 4.0 && distDiff <= 0.45) {
+            if (angleDiff <= 4.5 && distDiff <= 0.40) {
               currentChain.push(curr);
             } else {
               if (currentChain.length >= 2) wallChains.push(currentChain);
@@ -217,14 +211,14 @@ export const LidarPolarView = ({ maxRangeMeters = 6.0 }: LidarPolarViewProps) =>
             const last = currentChain[currentChain.length - 1];
             const wrapAngle = (first.angleDeg + 360) - last.angleDeg;
             const wrapDist = Math.abs(first.dist - last.dist);
-            if (wrapAngle <= 4.0 && wrapDist <= 0.45 && wallChains.length > 0) {
+            if (wrapAngle <= 4.5 && wrapDist <= 0.40 && wallChains.length > 0) {
               wallChains[0] = [...currentChain, ...wallChains[0]];
             } else {
               wallChains.push(currentChain);
             }
           }
 
-          // 5c. Draw continuous glowing walls
+          // 5c. Draw continuous glowing walls (walls only, no scattered dots)
           wallChains.forEach(chain => {
             if (chain.length < 2) return;
             ctx.save();
@@ -248,14 +242,6 @@ export const LidarPolarView = ({ maxRangeMeters = 6.0 }: LidarPolarViewProps) =>
             ctx.shadowBlur = 0;
             ctx.stroke();
             ctx.restore();
-          });
-
-          // 5d. Draw obstacle reflection nodes
-          validPolar.forEach(p => {
-            ctx.fillStyle = p.color;
-            ctx.beginPath();
-            ctx.arc(p.px, p.py, p.dist < 0.45 ? 2.5 : 1.5, 0, Math.PI * 2);
-            ctx.fill();
           });
         }
       }
@@ -282,7 +268,7 @@ export const LidarPolarView = ({ maxRangeMeters = 6.0 }: LidarPolarViewProps) =>
 
     render();
     return () => cancelAnimationFrame(animId);
-  }, [rays, isLidarActive, rangeScale, scanHz]);
+  }, []);
 
   return (
     <div className="glass-panel p-4 rounded-2xl border border-white/10 shadow-2xl relative overflow-hidden flex flex-col items-center">

@@ -251,20 +251,27 @@ def process_lidar_points(points: list, position: dict, orientation: float):
 
     points_counted = 0
     now = time.time()
+    n_pts = len(points)
 
-    for pt in points:
+    for i, pt in enumerate(points):
         angle_deg = pt.get("angle", 0.0)
         dist = pt.get("distance", 0.0)
-        if dist <= 0.10 or dist > 12.0:
+        if dist <= 0.15 or dist > 8.0:
             continue
+
+        # Noise Filter: Reject isolated laser spikes (dust, mirror/glass glare)
+        if n_pts >= 4:
+            prev_d = points[(i - 1) % n_pts].get("distance", 0.0)
+            next_d = points[(i + 1) % n_pts].get("distance", 0.0)
+            if abs(dist - prev_d) > 0.45 and abs(dist - next_d) > 0.45:
+                continue
 
         points_counted += 1
         rad = math.radians(orientation + angle_deg)
         cos_a = math.cos(rad)
         sin_a = math.sin(rad)
 
-        # 1. Ray trace free space: Only mark unexplored cells (-1) as free (0).
-        # NEVER erase solid obstacle walls (100) that were already mapped!
+        # 1. Ray trace free space in master grid (for ROS saving & navigation)
         curr = 0.0
         while curr < dist - res:
             curr += res
@@ -275,9 +282,8 @@ def process_lidar_points(points: list, position: dict, orientation: float):
             if 0 <= fx < width and 0 <= fy < height:
                 if grid[fy][fx] == -1:
                     grid[fy][fx] = 0
-                    accumulated_updates[fy * width + fx] = 0
 
-        # 2. Mark obstacle cell with 2x2 solid wall footprint
+        # 2. Mark solid bounce-backed obstacle wall
         obs_x = rx + dist * cos_a
         obs_y = ry + dist * sin_a
         ox = int((obs_x - origin_x) / res)

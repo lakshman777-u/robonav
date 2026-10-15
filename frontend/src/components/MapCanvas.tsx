@@ -4,7 +4,7 @@ import { useRobotStatus } from '../hooks/useRobotStatus';
 import { useCarTrim } from '../context/CarTrimContext';
 import { 
   drawGrid, drawRobot, drawDestination, drawRoomFlags, drawPath, 
-  canvasToWorld, drawLidarRays, drawRoomContour, drawMetricGuides,
+  canvasToWorld, drawRoomContour, drawMetricGuides,
   drawTrajectoryTrail
 } from '../utils/mapRenderer';
 import { createDestination } from '../services/api';
@@ -31,6 +31,29 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
   const rx = robotStatus?.position?.x ?? 0.0;
   const ry = robotStatus?.position?.y ?? 0.0;
 
+  // Keep latest state in ref to avoid tearing down 60 FPS animation loop on every incoming sensor packet
+  const stateRef = useRef({
+    mapData,
+    robotStatus,
+    destinations,
+    navigationPath,
+    sensorData,
+    scale,
+    offset
+  });
+
+  useEffect(() => {
+    stateRef.current = {
+      mapData,
+      robotStatus,
+      destinations,
+      navigationPath,
+      sensorData,
+      scale,
+      offset
+    };
+  });
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -40,6 +63,16 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
     let animationFrameId: number;
 
     const render = () => {
+      const {
+        mapData: curMap,
+        robotStatus: curRobot,
+        destinations: curDests,
+        navigationPath: curNav,
+        sensorData: curSensor,
+        scale: curScale,
+        offset: curOffset
+      } = stateRef.current;
+
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Deep dark floor background
@@ -47,9 +80,9 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Smooth slider interpolation (0.18 per frame) for fluid gliding animation
-      const targetX = robotStatus?.position?.x ?? 0.0;
-      const targetY = robotStatus?.position?.y ?? 0.0;
-      const targetHeading = robotStatus?.orientation ?? 0.0;
+      const targetX = curRobot?.position?.x ?? 0.0;
+      const targetY = curRobot?.position?.y ?? 0.0;
+      const targetHeading = curRobot?.orientation ?? 0.0;
 
       if (!animPoseRef.current.initialized) {
         animPoseRef.current = { x: targetX, y: targetY, heading: targetHeading, initialized: true };
@@ -67,11 +100,11 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
       const smoothHeading = animPoseRef.current.heading;
 
       // 1. Draw Metric 1-meter distance grid lines
-      drawMetricGuides(ctx, canvas.width, canvas.height, scale, offset);
+      drawMetricGuides(ctx, canvas.width, canvas.height, curScale, curOffset);
 
-      // 2. Draw 2D SLAM Occupancy Grid if available
-      if (mapData && mapData.occupancy_grid) {
-        drawGrid(ctx, mapData.occupancy_grid, mapData.width, mapData.height, scale, offset);
+      // 2. Draw 2D SLAM Occupancy Grid if available (using 0.02ms hardware offscreen canvas)
+      if (curMap && curMap.occupancy_grid) {
+        drawGrid(ctx, curMap.occupancy_grid, curMap.width, curMap.height, curScale, curOffset);
       } else {
         // Subtle background grid radar guides
         const cx = canvas.width / 2;
@@ -93,29 +126,28 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
       }
 
       // 3. Draw real-time travel trajectory breadcrumb trail
-      if (robotStatus?.trajectory && robotStatus.trajectory.length > 1) {
-        drawTrajectoryTrail(ctx, robotStatus.trajectory, scale, offset);
+      if (curRobot?.trajectory && curRobot.trajectory.length > 1) {
+        drawTrajectoryTrail(ctx, curRobot.trajectory, curScale, curOffset);
       }
 
-      // 4. Draw continuous 360° LiDAR solid room walls & floor ambient fill
-      if (sensorData?.lidar?.rays && sensorData.lidar.rays.length > 0) {
-        drawRoomContour(ctx, smoothX, smoothY, sensorData.lidar.rays, scale, offset);
-        drawLidarRays(ctx, smoothX, smoothY, sensorData.lidar.rays, scale, offset);
+      // 4. Draw continuous 360° LiDAR solid room walls & bounce-backed floor area (NO DOTS, NO SPIDERWEB RAYS)
+      if (curSensor?.lidar?.rays && curSensor.lidar.rays.length > 0) {
+        drawRoomContour(ctx, smoothX, smoothY, curSensor.lidar.rays, curScale, curOffset);
       }
 
       // 5. Draw planned autonomous navigation path
-      if (navigationPath) {
-        drawPath(ctx, navigationPath, scale, offset);
+      if (curNav) {
+        drawPath(ctx, curNav, curScale, curOffset);
       }
 
       // 6. Draw destination pins and custom room flags
-      if (destinations) {
-        drawRoomFlags(ctx, destinations, scale, offset);
+      if (curDests) {
+        drawRoomFlags(ctx, curDests, curScale, curOffset);
       }
 
       // 7. Draw robot chassis, wheels, heading arrow, and LiDAR turret with smooth pose
-      if (robotStatus) {
-        drawRobot(ctx, smoothX, smoothY, smoothHeading, scale, offset);
+      if (curRobot) {
+        drawRobot(ctx, smoothX, smoothY, smoothHeading, curScale, curOffset);
       }
 
       animationFrameId = requestAnimationFrame(render);
@@ -123,7 +155,7 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
 
     render();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [mapData, robotStatus, scale, offset, destinations, navigationPath, sensorData, rx, ry]);
+  }, []);
 
   const onCanvasClick = (e: MouseEvent<HTMLCanvasElement>) => {
     if (!flagPlacementMode || !onFlagPlaced) return;
