@@ -77,7 +77,7 @@ export const initOccupancyCanvas = (
   const imgData = offscreenCtx.createImageData(width, height);
   const data = imgData.data;
 
-  // Pass 1: Explored free floor: Pure clean solid white (#ffffff, matching Image 1 & 2)
+  // Pass 1: Explored free floor: Pure clean solid white (#ffffff)
   for (let i = 0; i < grid.length; i++) {
     const val = grid[i];
     const p = i * 4;
@@ -88,42 +88,18 @@ export const initOccupancyCanvas = (
       data[p + 2] = 255;
       data[p + 3] = 255;
     } else {
-      // Unexplored space: transparent so the canvas background shows through
+      // Unexplored space: transparent so the dark slate background shows through
       data[p + 3] = 0;
     }
   }
 
-  // Pass 2: Obstacle walls safety inflation buffer (coral pink / soft red, matching user's uploaded images)
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const idx = y * width + x;
-      if (grid[idx] >= 100) {
-        for (let dy = -2; dy <= 2; dy++) {
-          for (let dx = -2; dx <= 2; dx++) {
-            const ny = y + dy;
-            const nx = x + dx;
-            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-              if (grid[ny * width + nx] !== 100) {
-                const np = (ny * width + nx) * 4;
-                data[np] = 248;     // R
-                data[np + 1] = 113; // G
-                data[np + 2] = 113; // B (coral pink)
-                data[np + 3] = 180; // A
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Pass 3: Solid jet black obstacle wall core
+  // Pass 2: Slim crisp blue walls (#2563eb royal blue)
   for (let i = 0; i < grid.length; i++) {
     if (grid[i] >= 100) {
       const p = i * 4;
-      data[p] = 5;
-      data[p + 1] = 5;
-      data[p + 2] = 8;
+      data[p] = 37;      // R: 37
+      data[p + 1] = 99;  // G: 99
+      data[p + 2] = 235; // B: 235 (#2563eb royal blue)
       data[p + 3] = 255;
     }
   }
@@ -141,32 +117,22 @@ export const updateOccupancyPixels = (
   ensureOffscreenCanvas(width, height);
   if (!offscreenCtx) return;
 
-  // 1. Paint newly explored free floor cells (pure clean solid white)
+  // 1. Explored free floor (pure clean solid white)
+  offscreenCtx.fillStyle = '#ffffff';
   for (let i = 0; i < updates.length; i++) {
     const u = updates[i];
     if (u.x < 0 || u.x >= width || u.y < 0 || u.y >= height) continue;
     if (u.val === 0) {
-      offscreenCtx.fillStyle = '#ffffff';
       offscreenCtx.fillRect(u.x, u.y, 1, 1);
     }
   }
 
-  // 2. Paint coral-pink safety inflation buffer around obstacle wall hits
+  // 2. Slim crisp blue obstacle walls (#2563eb, 1 single pixel)
+  offscreenCtx.fillStyle = '#2563eb';
   for (let i = 0; i < updates.length; i++) {
     const u = updates[i];
     if (u.x < 0 || u.x >= width || u.y < 0 || u.y >= height) continue;
     if (u.val >= 100) {
-      offscreenCtx.fillStyle = 'rgba(244, 63, 94, 0.45)';
-      offscreenCtx.fillRect(u.x - 2, u.y - 2, 5, 5);
-    }
-  }
-
-  // 3. Paint crisp solid black obstacle wall cores
-  for (let i = 0; i < updates.length; i++) {
-    const u = updates[i];
-    if (u.x < 0 || u.x >= width || u.y < 0 || u.y >= height) continue;
-    if (u.val >= 100) {
-      offscreenCtx.fillStyle = '#050508';
       offscreenCtx.fillRect(u.x, u.y, 1, 1);
     }
   }
@@ -219,39 +185,79 @@ export const drawGrid = (
   ctx.strokeRect(offset.x, offset.y, totalW, totalH);
 };
 
-// Draw Live LiDAR Sensor Rays radiating from the moving LiDAR point to the static walls
-// (NO DOTS — does NOT draw or move any walls — the 2D diagram stays completely still!)
+// Draw Live LiDAR Active Laser Reading Beam and Sweeping Radar Sector
+// (The 2D walls stay 100% still, while the laser dynamically changes its reading angle!)
 export const drawLidarScanRays = (
   ctx: CanvasRenderingContext2D,
   robotX: number,
   robotY: number,
   robotHeading: number,
+  sweepAngleDeg: number,
   rays: { angle: number; distance: number }[],
   scale: number,
   offset: { x: number; y: number }
 ) => {
-  if (!rays || rays.length < 8) return;
-
   const rPos = worldToCanvas(robotX, robotY, scale, offset.x, offset.y);
+  const sweepRad = (sweepAngleDeg * Math.PI) / 180;
+
+  // 1. Find the obstacle distance at the current reading angle
+  let hitDist = 4.5;
+  if (rays && rays.length > 0) {
+    const relAngle = (((sweepAngleDeg - robotHeading) % 360) + 360) % 360;
+    let closestRay = rays[0];
+    let minDiff = 360;
+    for (let i = 0; i < rays.length; i++) {
+      const diff = Math.abs(rays[i].angle - relAngle);
+      const cyclicDiff = Math.min(diff, 360 - diff);
+      if (cyclicDiff < minDiff && rays[i].distance >= 0.12) {
+        minDiff = cyclicDiff;
+        closestRay = rays[i];
+      }
+    }
+    if (closestRay && closestRay.distance >= 0.12 && closestRay.distance <= 8.0) {
+      hitDist = closestRay.distance;
+    }
+  }
+
+  // Contact coordinate on the stationary wall in world coordinates
+  const wx = robotX + hitDist * Math.cos(sweepRad);
+  const wy = robotY + hitDist * Math.sin(sweepRad);
+  const hitPos = worldToCanvas(wx, wy, scale, offset.x, offset.y);
 
   ctx.save();
-  ctx.lineWidth = 0.8;
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'; // Faint delicate white rays as seen in Image 1 & 2
+
+  // 2. Trailing Sweep Fan Cone (30-degree active reading angle radar sector)
+  const coneRad = (30 * Math.PI) / 180;
+  const beamDistPx = Math.hypot(hitPos.x - rPos.x, hitPos.y - rPos.y);
+  const sweepGrad = ctx.createRadialGradient(rPos.x, rPos.y, 2, rPos.x, rPos.y, beamDistPx);
+  sweepGrad.addColorStop(0, 'rgba(6, 182, 212, 0.35)');
+  sweepGrad.addColorStop(0.7, 'rgba(6, 182, 212, 0.10)');
+  sweepGrad.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
 
   ctx.beginPath();
-  for (let i = 0; i < rays.length; i += 2) {
-    const ray = rays[i];
-    if (ray.distance < 0.10 || ray.distance > 8.0) continue;
-    const globalAngleDeg = (((robotHeading + ray.angle) % 360) + 360) % 360;
-    const rad = (globalAngleDeg * Math.PI) / 180;
-    const wx = robotX + ray.distance * Math.cos(rad);
-    const wy = robotY + ray.distance * Math.sin(rad);
-    const pos = worldToCanvas(wx, wy, scale, offset.x, offset.y);
+  ctx.moveTo(rPos.x, rPos.y);
+  ctx.arc(rPos.x, rPos.y, beamDistPx, sweepRad - coneRad, sweepRad);
+  ctx.closePath();
+  ctx.fillStyle = sweepGrad;
+  ctx.fill();
 
-    ctx.moveTo(rPos.x, rPos.y);
-    ctx.lineTo(pos.x, pos.y);
-  }
+  // 3. Crisp Active Laser Reading Ray (Luminous cyan #00f0ff pointing to the stationary blue wall)
+  ctx.beginPath();
+  ctx.moveTo(rPos.x, rPos.y);
+  ctx.lineTo(hitPos.x, hitPos.y);
+  ctx.strokeStyle = '#00f0ff';
+  ctx.lineWidth = 1.8;
+  ctx.shadowColor = '#00f0ff';
+  ctx.shadowBlur = 6;
   ctx.stroke();
+
+  // 4. Subtle wall contact glow where the laser strikes the stationary wall
+  ctx.beginPath();
+  ctx.arc(hitPos.x, hitPos.y, 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#00f0ff';
+  ctx.shadowBlur = 8;
+  ctx.fill();
+
   ctx.restore();
 };
 

@@ -20,6 +20,7 @@ interface MapCanvasProps {
 export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlagPlacement }: MapCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animPoseRef = useRef({ x: 0.0, y: 0.0, heading: 0.0, initialized: false });
+  const sweepAngleRef = useRef(0.0);
   const { 
     scale, offset, handleWheel, handleMouseDown, 
     handleMouseMove, handleMouseUp, resetView, 
@@ -136,10 +137,22 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
         drawTrajectoryTrail(ctx, curRobot.trajectory, curScale, curOffset);
       }
 
-      // 4. Draw faint live LiDAR scan rays radiating to stationary obstacle walls
-      // (The 2D SLAM diagram stays completely still — only the LiDAR sensor puck moves!)
+      // Advance active LiDAR reading angle sweep continuously at ~15 Hz
+      sweepAngleRef.current = (sweepAngleRef.current + 5.5) % 360;
+
+      // 4. Draw active sweeping LiDAR laser reading beam & radar cone
+      // (The 2D walls stay 100% still, while the laser dynamically sweeps its reading angle!)
       if (curSensor?.lidar?.rays && curSensor.lidar.rays.length > 0) {
-        drawLidarScanRays(ctx, smoothX, smoothY, smoothHeading, curSensor.lidar.rays, curScale, curOffset);
+        drawLidarScanRays(
+          ctx, 
+          smoothX, 
+          smoothY, 
+          smoothHeading, 
+          sweepAngleRef.current, 
+          curSensor.lidar.rays, 
+          curScale, 
+          curOffset
+        );
       }
 
       // 5. Draw planned autonomous navigation path

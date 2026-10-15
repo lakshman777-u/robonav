@@ -277,19 +277,16 @@ def process_lidar_points(points: list, position: dict, orientation: float):
                     grid[fy][fx] = 0
                     accumulated_updates[fy * width + fx] = 0
 
-        # 2. Mark solid bounce-backed obstacle wall
+        # 2. Mark slim solid bounce-backed obstacle wall
         obs_x = rx + dist * cos_a
         obs_y = ry + dist * sin_a
         ox = int((obs_x - origin_x) / res)
         oy = int((obs_y - origin_y) / res)
 
-        for dx in (0, 1):
-            for dy in (0, 1):
-                nox, noy = ox + dx, oy + dy
-                if 0 <= nox < width and 0 <= noy < height:
-                    if grid[noy][nox] != 100:
-                        grid[noy][nox] = 100
-                        accumulated_updates[noy * width + nox] = 100
+        if 0 <= ox < width and 0 <= oy < height:
+            if grid[oy][ox] != 100:
+                grid[oy][ox] = 100
+                accumulated_updates[oy * width + ox] = 100
 
     if points_counted > 0:
         current_map_data["real_points_mapped"] = current_map_data.get("real_points_mapped", 0) + points_counted
