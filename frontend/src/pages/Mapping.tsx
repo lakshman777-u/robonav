@@ -3,14 +3,14 @@ import {
   Scan, Play, Square, Trash2, Download, HardDrive, 
   Layers, RefreshCw, Cpu, AlertTriangle, ArrowUp, ArrowDown, 
   ArrowLeft, ArrowRight, PauseCircle, CheckCircle2, X, Compass, MapPin,
-  Snowflake, RotateCcw, FilePlus, Flag, Crosshair, Pause
+  Snowflake, RotateCcw, FilePlus, Flag, Crosshair, Pause, Save
 } from 'lucide-react';
 import { MapCanvas } from '../components/MapCanvas';
 import { LidarPolarView } from '../components/LidarPolarView';
 import { useRobotStatus } from '../hooks/useRobotStatus';
 import { useCarTrim } from '../context/CarTrimContext';
 import { 
-  startMapping, pauseMapping, finalizeMap, stopMapping, clearMap, getMaps, 
+  startMapping, pauseMapping, finalizeMap, manualSaveMap, stopMapping, clearMap, getMaps, 
   setRoomFlag, deleteRoomFlag,
   loadSavedMap, deleteMap, deleteAllMaps, getLidarStatus, startLidar, stopLidar 
 } from '../services/api';
@@ -28,6 +28,7 @@ export const Mapping = () => {
   const [driveSpeed, setDriveSpeed] = useState(0.40);
   const [loadingAction, setLoadingAction] = useState(false);
   const [flagPlacementMode, setFlagPlacementMode] = useState<number | null>(null);
+  const [manualMapName, setManualMapName] = useState('');
 
   // Name prompt modal state
   const [showNameModal, setShowNameModal] = useState(false);
@@ -181,10 +182,26 @@ export const Mapping = () => {
     }
   };
 
-  // 2. END & SAVE MAP: Finalizes scan and saves to server maps/ and database
+  // 2. MANUAL SAVE MAP: Allows user to manually save anytime with custom name
   const handleOpenFreezeSaveModal = () => {
     setSaveAsName(activeLocationName || 'Building Map');
     setShowFreezeSaveModal(true);
+  };
+
+  const handleManualSaveSnapshot = async (customName?: string) => {
+    const finalName = (customName || saveAsName || activeLocationName || 'Building Map').trim();
+    setShowFreezeSaveModal(false);
+    setLoadingAction(true);
+    try {
+      await manualSaveMap(finalName);
+      setActiveLocationName(finalName);
+      toast.success(`💾 Manually saved "${finalName}" to laptop server (maps/) & database!`, { duration: 5000 });
+      fetchMapsAndLidar();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to save map');
+    } finally {
+      setLoadingAction(false);
+    }
   };
 
   const handleConfirmFreezeAndSave = async () => {
@@ -197,7 +214,7 @@ export const Mapping = () => {
       setIsMapping(false);
       setIsFrozen(true);
       setActiveLocationName(finalName);
-      toast.success(`Saved "${finalName}" 2D map to laptop server (maps/) & database!`, { duration: 5000 });
+      toast.success(`💾 Finalized & Saved "${finalName}" 2D map to laptop server (maps/) & database!`, { duration: 5000 });
       fetchMapsAndLidar();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to finalize and save map');
@@ -206,20 +223,21 @@ export const Mapping = () => {
     }
   };
 
-  // 3. RESET MAP: Clears live canvas and resets odometry to (0,0) to reconstruct fresh
+  // 3. RESET 2D SCREEN: Immediately resets canvas and odometry to (0,0) fresh
   const handleResetReconstruct = async () => {
-    if (window.confirm('Reset Map: Clear live 2D map and reset location to (0,0) to reconstruct the map fresh from here? (Saved maps in library are kept).')) {
-      try {
-        if (isMapping) {
-          await pauseMapping();
-          setIsMapping(false);
-        }
-        setIsFrozen(false);
-        await clearMap();
-        toast.success('2D Map reset to (0,0). Ready to reconstruct fresh!');
-      } catch (e) {
-        toast.error('Failed to reset map');
+    setLoadingAction(true);
+    try {
+      if (isMapping) {
+        await pauseMapping();
+        setIsMapping(false);
       }
+      setIsFrozen(false);
+      await clearMap();
+      toast.success('🔄 2D Map & Screen reset to (0,0)! Canvas cleared.');
+    } catch (e) {
+      toast.error('Failed to reset map');
+    } finally {
+      setLoadingAction(false);
     }
   };
 
@@ -366,10 +384,10 @@ export const Mapping = () => {
         </div>
       )}
 
-      {/* Freeze & Save As Modal Dialog */}
+      {/* Manual Save 2D Map Modal Dialog */}
       {showFreezeSaveModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-950/95 border border-blue-500/40 rounded-3xl w-full max-w-md p-6 relative shadow-[0_0_50px_rgba(59,130,246,0.25)] font-mono">
+          <div className="bg-slate-950/95 border border-cyan-500/40 rounded-3xl w-full max-w-md p-6 relative shadow-[0_0_50px_rgba(6,182,212,0.25)] font-mono">
             <button
               onClick={() => setShowFreezeSaveModal(false)}
               className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-white bg-slate-900 rounded-full transition-colors"
@@ -377,46 +395,55 @@ export const Mapping = () => {
               <X size={18} />
             </button>
 
-            <div className="flex items-center gap-2 mb-2 text-blue-400">
-              <Snowflake size={22} className="text-cyan-400 animate-spin-slow" />
+            <div className="flex items-center gap-2 mb-2 text-cyan-400">
+              <Save size={22} className="text-cyan-400" />
               <h3 className="text-sm font-black uppercase tracking-wider text-white">
-                Freeze & Save 2D Map
+                Manual Save 2D Map
               </h3>
             </div>
 
             <p className="text-xs text-gray-400 mb-4">
-              Freeze the live scan and save this multi-room map to your laptop server:
+              Enter a custom name to manually save the current 2D map directly to your laptop server (maps/) and database:
             </p>
 
             <div className="space-y-3">
               <div>
                 <label className="text-[10px] text-gray-400 uppercase tracking-widest block mb-1">
-                  SAVE AS (MAP NAME)
+                  CUSTOM MAP NAME / LOCATION
                 </label>
                 <input
                   type="text"
                   value={saveAsName}
                   onChange={(e) => setSaveAsName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleConfirmFreezeAndSave()}
+                  onKeyDown={(e) => e.key === 'Enter' && handleManualSaveSnapshot()}
                   autoFocus
-                  placeholder="e.g. Apartment Multi-Room, Floor 1"
-                  className="w-full bg-slate-900 border border-blue-500/50 rounded-xl px-4 py-2.5 text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-inner"
+                  placeholder="e.g. My Apartment, Location 1, Living Room"
+                  className="w-full bg-slate-900 border border-cyan-500/50 rounded-xl px-4 py-2.5 text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
                 />
               </div>
 
-              <div className="flex items-center gap-2 pt-2">
+              <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
                 <button
                   onClick={() => setShowFreezeSaveModal(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-gray-300 text-xs font-bold transition-all"
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-gray-300 text-xs font-bold transition-all"
                 >
                   Cancel
                 </button>
                 <button
+                  onClick={() => handleManualSaveSnapshot()}
+                  className="flex-1 w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-black uppercase tracking-wider transition-all shadow-lg flex items-center justify-center gap-1.5"
+                  title="Save current map snapshot to server without stopping scanning"
+                >
+                  <Save size={14} />
+                  <span>Save Snapshot</span>
+                </button>
+                <button
                   onClick={handleConfirmFreezeAndSave}
-                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white text-xs font-black uppercase tracking-wider transition-all shadow-lg flex items-center justify-center gap-1.5"
+                  className="flex-1 w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-xs font-black uppercase tracking-wider transition-all shadow-lg flex items-center justify-center gap-1.5"
+                  title="Finalize map, freeze, and save to server"
                 >
                   <HardDrive size={14} />
-                  <span>Freeze & Save Map</span>
+                  <span>Save & Finish</span>
                 </button>
               </div>
             </div>
@@ -501,26 +528,26 @@ export const Mapping = () => {
             <span>STOP / FREEZE</span>
           </button>
 
-          {/* Button 3: End Map & Save */}
+          {/* Button 3: Manual Save Map */}
           <button
             onClick={handleOpenFreezeSaveModal}
             disabled={loadingAction}
             className="px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white border border-purple-400/40 shadow-purple-900/40"
-            title="Finalize map and save to laptop server (maps/) and database"
+            title="Manually save 2D map with custom name to laptop server (maps/) and database"
           >
-            <HardDrive size={15} />
-            <span>END & SAVE MAP</span>
+            <Save size={15} />
+            <span>MANUAL SAVE</span>
           </button>
 
-          {/* Button 4: Reset Map */}
+          {/* Button 4: Reset 2D Screen */}
           <button
             onClick={handleResetReconstruct}
             disabled={loadingAction}
             className="px-4 py-2.5 rounded-xl bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-500/50 text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-md"
-            title="Clear canvas & reset location to (0,0) to start over again"
+            title="Immediately clear canvas & reset 2D mapping screen and odometry to (0,0)"
           >
             <RotateCcw size={15} className="text-amber-400" />
-            <span>RESET MAP</span>
+            <span>RESET 2D SCREEN</span>
           </button>
 
           {/* Button 5: Delete All (Fresh Start) */}
@@ -702,6 +729,50 @@ export const Mapping = () => {
         </div>
       </div>
 
+      {/* Quick Manual Save & Screen Reset Bar */}
+      <div className="glass-panel p-3.5 rounded-2xl border border-cyan-500/30 bg-slate-950/70 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono">
+        <div className="flex items-center gap-2 text-white">
+          <Save size={16} className="text-cyan-400" />
+          <span className="font-black uppercase tracking-wider">MANUAL SAVE 2D MAP:</span>
+          <span className="text-gray-400 text-[11px] hidden md:inline">Type custom name & save directly to laptop server anytime</span>
+        </div>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <input
+            type="text"
+            value={manualMapName}
+            onChange={(e) => setManualMapName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (manualMapName.trim() || activeLocationName)) {
+                handleManualSaveSnapshot(manualMapName.trim() || activeLocationName);
+                setManualMapName('');
+              }
+            }}
+            placeholder={`e.g. ${activeLocationName || 'My Apartment'}`}
+            className="bg-slate-900 border border-white/20 rounded-xl px-3 py-1.5 text-white font-mono text-xs focus:outline-none focus:ring-1 focus:ring-cyan-400 flex-1 sm:w-64"
+          />
+          <button
+            onClick={() => {
+              handleManualSaveSnapshot(manualMapName.trim() || activeLocationName);
+              setManualMapName('');
+            }}
+            disabled={loadingAction}
+            className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow transition-all whitespace-nowrap"
+          >
+            <Save size={13} />
+            <span>SAVE MAP</span>
+          </button>
+          <button
+            onClick={handleResetReconstruct}
+            disabled={loadingAction}
+            className="px-3 py-1.5 rounded-xl bg-amber-950/70 hover:bg-amber-900/70 text-amber-300 border border-amber-500/40 font-bold text-xs flex items-center gap-1 transition-all whitespace-nowrap"
+            title="Instantly clear 2D canvas and reset robot coordinate to (0,0)"
+          >
+            <RotateCcw size={13} className="text-amber-400" />
+            <span>RESET SCREEN</span>
+          </button>
+        </div>
+      </div>
+
       {/* 2. Main Studio Grid: 2D Canvas (Left/Center) + Telemetry & Controls (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left Column (2 Cols): High-Resolution 2D SLAM Canvas */}
@@ -832,9 +903,10 @@ export const Mapping = () => {
                 </div>
                 <button
                   onClick={handleOpenFreezeSaveModal}
-                  className="px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white rounded font-bold text-[10px] uppercase shadow"
+                  className="px-2.5 py-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded font-bold text-[10px] uppercase shadow flex items-center gap-1"
                 >
-                  Freeze & Save
+                  <Save size={11} />
+                  <span>Manual Save</span>
                 </button>
               </div>
             )}

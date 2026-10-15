@@ -123,6 +123,7 @@ export const getRobotTelemetry = () => api.get('/robot/telemetry');
 export const startMapping = (name?: string) => api.post('/maps/start', { name: name || 'Building Map' });
 export const pauseMapping = () => api.post('/maps/pause');
 export const finalizeMap = (name?: string) => api.post('/maps/finalize', name ? { name } : {});
+export const manualSaveMap = (name?: string) => api.post('/maps/save', name ? { name } : {});
 export const stopMapping = (name?: string) => api.post('/maps/stop', name ? { name } : {});
 export const clearMap = () => api.post('/maps/clear');
 export const loadSavedMap = (mapId: string | number) => api.post(`/maps/${mapId}/load`);

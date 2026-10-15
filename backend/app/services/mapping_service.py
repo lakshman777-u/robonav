@@ -322,11 +322,11 @@ async def save_map(map_data: dict):
         new_map = Map(
             map_id=map_id_str,
             name=map_name,
-            resolution=map_data.get("resolution", 0.05),
-            width=map_data.get("width", 400),
-            height=map_data.get("height", 300),
-            origin_x=map_data.get("origin_x", 0.0),
-            origin_y=map_data.get("origin_y", 0.0),
+            resolution=map_data.get("resolution", MAP_RESOLUTION),
+            width=map_data.get("width", MAP_WIDTH),
+            height=map_data.get("height", MAP_HEIGHT),
+            origin_x=map_data.get("origin_x", MAP_ORIGIN_X),
+            origin_y=map_data.get("origin_y", MAP_ORIGIN_Y),
             occupancy_data=compressed_grid,
             status="ready"
         )
@@ -341,16 +341,22 @@ async def save_map(map_data: dict):
         if not safe_name:
             safe_name = "Location_1"
 
+        w = map_data.get("width", MAP_WIDTH)
+        h = map_data.get("height", MAP_HEIGHT)
+        res = map_data.get("resolution", MAP_RESOLUTION)
+        orig_x = map_data.get("origin_x", MAP_ORIGIN_X)
+        orig_y = map_data.get("origin_y", MAP_ORIGIN_Y)
+
         # Save JSON
         json_path = os.path.join(maps_dir, f"{safe_name}.json")
         with open(json_path, "w") as f:
             json.dump({
                 "map_id": map_id_str,
                 "name": map_name,
-                "resolution": map_data.get("resolution", 0.05),
-                "width": map_data.get("width", 400),
-                "height": map_data.get("height", 300),
-                "origin": [map_data.get("origin_x", 0.0), map_data.get("origin_y", 0.0), 0.0],
+                "resolution": res,
+                "width": w,
+                "height": h,
+                "origin": [orig_x, orig_y, 0.0],
                 "saved_at": datetime.utcnow().isoformat(),
                 "grid": map_data["grid"]
             }, f, indent=2)
@@ -358,8 +364,6 @@ async def save_map(map_data: dict):
         # Save ROS 2 PGM and YAML
         pgm_path = os.path.join(maps_dir, f"{safe_name}.pgm")
         yaml_path = os.path.join(maps_dir, f"{safe_name}.yaml")
-        w = map_data.get("width", 400)
-        h = map_data.get("height", 300)
         grid = map_data["grid"]
 
         pgm_bytes = bytearray()
@@ -380,8 +384,8 @@ async def save_map(map_data: dict):
         with open(yaml_path, "w") as f:
             f.write(f"""image: {safe_name}.pgm
 mode: trinary
-resolution: {map_data.get("resolution", 0.05)}
-origin: [-10.0, -7.5, 0.0]
+resolution: {res}
+origin: [{orig_x}, {orig_y}, 0.0]
 negate: 0
 occupied_thresh: 0.65
 free_thresh: 0.25
@@ -389,6 +393,24 @@ free_thresh: 0.25
         print(f"[MAPPER] Map '{map_name}' successfully saved to laptop disk at {maps_dir}/{safe_name}.*")
     except Exception as e:
         print(f"[MAPPER] Warning: Could not write physical map files to disk: {e}")
+
+async def manual_save_map(save_as_name: Optional[str] = None) -> bool:
+    """Manually saves current active map state to DB and laptop maps/ with custom name."""
+    global current_map_data
+    if current_map_data and "grid" in current_map_data:
+        if save_as_name and save_as_name.strip():
+            current_map_data["name"] = save_as_name.strip()
+        await save_map(current_map_data)
+        await manager.broadcast_to_browsers({
+            "type": "map_status",
+            "data": {
+                "status": "saved", 
+                "name": current_map_data.get("name"),
+                "message": f"Successfully manually saved map '{current_map_data.get('name')}'"
+            }
+        })
+        return True
+    return False
 
 def compress_grid(grid: List[List[int]]) -> bytes:
     json_str = json.dumps(grid)

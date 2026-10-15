@@ -9,7 +9,7 @@ from app.database import AsyncSessionLocal, Map
 from app.security.authentication import get_current_user, get_optional_user, require_admin, User
 from app.services.mapping_service import (
     start_mapping, stop_mapping, pause_mapping, finalize_map, clear_map, load_saved_map,
-    current_map_data, decompress_grid
+    manual_save_map, current_map_data, decompress_grid
 )
 from app.services.robot_service import robot_state
 
@@ -171,6 +171,17 @@ async def api_stop_mapping(req: Optional[MapStopRequest] = None, current_user: O
         if not success:
             raise HTTPException(status_code=400, detail="Not currently mapping")
         return {"status": "mapping_paused"}
+
+class MapSaveRequest(BaseModel):
+    name: Optional[str] = None
+
+@router.post("/save")
+async def api_save_map(req: Optional[MapSaveRequest] = None, current_user: Optional[User] = Depends(get_optional_user)):
+    save_as = req.name.strip() if req and req.name and req.name.strip() else None
+    success = await manual_save_map(save_as)
+    if not success:
+        raise HTTPException(status_code=400, detail="No map data to save or mapping not initialized")
+    return {"status": "saved", "name": save_as or (current_map_data.get("name") if current_map_data else "Building Map")}
 
 @router.post("/clear")
 async def api_clear_map(current_user: Optional[User] = Depends(get_optional_user)):
