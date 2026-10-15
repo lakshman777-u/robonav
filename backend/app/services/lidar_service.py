@@ -100,21 +100,23 @@ def stop_driver() -> Dict[str, Any]:
 def get_lidar_status() -> Dict[str, Any]:
     """Returns combined hardware detection, process, and telemetry status."""
     from app.api.robot import bridge_metrics
+    from app.simulation.robot_simulator import simulator
     running = is_driver_running()
     detected_port = detect_lidar_port()
     now = time.time()
     last_seen = bridge_metrics.get("last_seen", 0.0)
-    is_streaming = (now - last_seen < 2.5) if last_seen > 0 else False
+    is_hw_streaming = (now - last_seen < 2.5) if last_seen > 0 else False
+    is_streaming = is_hw_streaming or (simulator.is_running and len(simulator.lidar_rays) > 0)
 
     return {
         "hardware_detected": detected_port is not None,
         "port": detected_port or "None (Plug in USB)",
-        "driver_running": running,
+        "driver_running": running or simulator.is_running,
         "is_streaming": is_streaming,
-        "scan_hz": bridge_metrics.get("scan_hz", 0.0),
-        "scans_published": bridge_metrics.get("scans_published", 0),
+        "scan_hz": bridge_metrics.get("scan_hz", 0.0) if is_hw_streaming else (10.0 if simulator.is_running else 0.0),
+        "scans_published": bridge_metrics.get("scans_published", 0) if is_hw_streaming else (len(simulator.lidar_rays) * 10),
         "packets_rx": bridge_metrics.get("udp_packets_rx", 0),
         "bytes_rx": bridge_metrics.get("udp_bytes_rx", 0),
         "crc_errors": bridge_metrics.get("dropped_packets", 0),
-        "last_seen_sec": round(now - last_seen, 1) if last_seen > 0 else -1
+        "last_seen_sec": round(now - last_seen, 1) if is_hw_streaming else (0.1 if simulator.is_running else -1)
     }

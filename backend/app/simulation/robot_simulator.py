@@ -232,7 +232,7 @@ class RobotSimulator:
         
     def _update_movement(self):
         if self.state in ["NAVIGATING", "RETURNING_HOME"]:
-            if random.random() < (0.1 * 0.1): # 10% per sec
+            if self.demo_mode and random.random() < 0.01:
                 self.state = "OBSTACLE_DETECTED"
                 self.velocity = 0.0
                 asyncio.create_task(self._handle_obstacle())
@@ -312,9 +312,9 @@ class RobotSimulator:
         self.recent_map_updates = []
         
         for angle_deg in range(360):
-            angle_rad = math.radians(angle_deg)
-            cos_a = math.cos(angle_rad)
-            sin_a = math.sin(angle_rad)
+            world_angle_rad = math.radians((self.orientation + angle_deg) % 360)
+            cos_a = math.cos(world_angle_rad)
+            sin_a = math.sin(world_angle_rad)
             
             dist = 0.0
             hit = False
@@ -325,19 +325,20 @@ class RobotSimulator:
                 
                 if 0 <= check_x < self.grid_width and 0 <= check_y < self.grid_height:
                     val = self.virtual_environment[check_y][check_x]
-                    
-                    if self.mapping_active:
-                        if self.explored_map[check_y][check_x] != val:
-                            self.explored_map[check_y][check_x] = val
-                            self.recent_map_updates.append({"x": check_x, "y": check_y, "val": val})
-                    
                     if val >= 50:
                         hit = True
                         break
                 else:
                     break
                 dist += self.resolution
-            self.lidar_rays.append({"angle": angle_deg, "distance": dist})
+            self.lidar_rays.append({"angle": float(angle_deg), "distance": round(dist, 3)})
+
+        import app.api.robot as api_robot
+        api_robot.latest_lidar_rays = self.lidar_rays
+
+        if self.mapping_active:
+            from app.services.mapping_service import process_lidar_points
+            process_lidar_points(self.lidar_rays, self.position, self.orientation)
 
     def _update_waiting(self):
         if self.state == "WAITING_AT_DESTINATION" and self.wait_timer:

@@ -79,7 +79,7 @@ async def read_robot_status(robot_id: Optional[str] = None, current_user: Option
         "esp32": "ONLINE" if is_connected else ("STANDBY" if simulator.is_running else "OFFLINE"),
         "websocket": "CONNECTED" if (manager.robot_authenticated or is_connected) else ("CONNECTED" if simulator.is_running else "DISCONNECTED"),
         "camera": "STREAMING" if (manager.robot_authenticated or simulator.is_running) else "OFFLINE",
-        "lidar": "ACTIVE" if (is_bridge_active and bridge_metrics["scans_published"] > 0) else ("NO DATA" if is_bridge_active else "INACTIVE"),
+        "lidar": "ACTIVE" if ((is_bridge_active and bridge_metrics["scans_published"] > 0) or simulator.is_running) else "INACTIVE",
         "ultrasonic": "ACTIVE" if (manager.robot_authenticated or simulator.is_running) else "INACTIVE",
         "motor_controller": "READY" if (manager.robot_authenticated or simulator.is_running) else "STANDBY",
         "udp_bridge": "STREAMING" if (is_bridge_active and bridge_metrics["scans_published"] > 0) else ("ONLINE" if is_bridge_active else "IDLE")
@@ -112,10 +112,10 @@ async def get_robot_telemetry(current_user: Optional[User] = Depends(get_optiona
             "rear": 2.10
         },
         "lidar": {
-            "status": "ACTIVE" if (is_bridge_active and bridge_metrics["scans_published"] > 0) else ("NO DATA" if is_bridge_active else "INACTIVE"),
-            "hz": bridge_metrics["scan_hz"],
-            "rays": latest_lidar_rays,
-            "points": len(latest_lidar_rays)
+            "status": "ACTIVE" if ((is_bridge_active and bridge_metrics["scans_published"] > 0) or simulator.is_running) else "INACTIVE",
+            "hz": bridge_metrics["scan_hz"] if is_bridge_active else (10.0 if simulator.is_running else 0.0),
+            "rays": latest_lidar_rays if latest_lidar_rays else simulator.lidar_rays,
+            "points": len(latest_lidar_rays) if latest_lidar_rays else len(simulator.lidar_rays)
         },
         "camera": vid_status,
         "bridge": bridge_metrics,
