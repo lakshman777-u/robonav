@@ -219,10 +219,11 @@ def update_map(data: dict):
 
 accumulated_updates: Dict[int, int] = {}
 last_map_broadcast: float = 0.0
+last_auto_save: float = 0.0
 
 def process_lidar_points(points: list, position: dict, orientation: float):
     """Processes live LiDAR scans into 2D SLAM occupancy grid in real-time."""
-    global current_map_data, accumulated_updates, last_map_broadcast
+    global current_map_data, accumulated_updates, last_map_broadcast, last_auto_save
     if not current_map_data:
         current_map_data = {
             "name": "Building Map",
@@ -251,20 +252,12 @@ def process_lidar_points(points: list, position: dict, orientation: float):
 
     points_counted = 0
     now = time.time()
-    n_pts = len(points)
 
-    for i, pt in enumerate(points):
+    for pt in points:
         angle_deg = pt.get("angle", 0.0)
         dist = pt.get("distance", 0.0)
-        if dist <= 0.15 or dist > 8.0:
+        if dist <= 0.10 or dist > 8.0:
             continue
-
-        # Noise Filter: Reject isolated laser spikes (dust, mirror/glass glare)
-        if n_pts >= 4:
-            prev_d = points[(i - 1) % n_pts].get("distance", 0.0)
-            next_d = points[(i + 1) % n_pts].get("distance", 0.0)
-            if abs(dist - prev_d) > 0.45 and abs(dist - next_d) > 0.45:
-                continue
 
         points_counted += 1
         rad = math.radians(orientation + angle_deg)
@@ -317,26 +310,46 @@ def process_lidar_points(points: list, position: dict, orientation: float):
         except RuntimeError:
             pass
 
+    # Periodic background auto-save every 15 seconds to laptop disk & DB so multi-room maps are never lost
+    if (now - last_auto_save >= 15.0) and current_map_data.get("real_points_mapped", 0) > 30:
+        last_auto_save = now
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(save_map(current_map_data))
+        except RuntimeError:
+            pass
+
 async def save_map(map_data: dict):
     map_name = map_data.get("name", "Location 1")
     timestamp_str = int(datetime.utcnow().timestamp())
     map_id_str = f"MAP-{timestamp_str}"
 
-    # 1. Save in SQLite Database
+    # 1. Upsert in SQLite Database
     async with AsyncSessionLocal() as session:
         compressed_grid = compress_grid(map_data["grid"])
-        new_map = Map(
-            map_id=map_id_str,
-            name=map_name,
-            resolution=map_data.get("resolution", MAP_RESOLUTION),
-            width=map_data.get("width", MAP_WIDTH),
-            height=map_data.get("height", MAP_HEIGHT),
-            origin_x=map_data.get("origin_x", MAP_ORIGIN_X),
-            origin_y=map_data.get("origin_y", MAP_ORIGIN_Y),
-            occupancy_data=compressed_grid,
-            status="ready"
-        )
-        session.add(new_map)
+        result = await session.execute(select(Map).where(Map.name == map_name))
+        existing_map = result.scalars().first()
+        if existing_map:
+            existing_map.occupancy_data = compressed_grid
+            existing_map.status = "ready"
+            existing_map.resolution = map_data.get("resolution", MAP_RESOLUTION)
+            existing_map.width = map_data.get("width", MAP_WIDTH)
+            existing_map.height = map_data.get("height", MAP_HEIGHT)
+            existing_map.origin_x = map_data.get("origin_x", MAP_ORIGIN_X)
+            existing_map.origin_y = map_data.get("origin_y", MAP_ORIGIN_Y)
+        else:
+            new_map = Map(
+                map_id=map_id_str,
+                name=map_name,
+                resolution=map_data.get("resolution", MAP_RESOLUTION),
+                width=map_data.get("width", MAP_WIDTH),
+                height=map_data.get("height", MAP_HEIGHT),
+                origin_x=map_data.get("origin_x", MAP_ORIGIN_X),
+                origin_y=map_data.get("origin_y", MAP_ORIGIN_Y),
+                occupancy_data=compressed_grid,
+                status="ready"
+            )
+            session.add(new_map)
         await session.commit()
 
     # 2. Save physical copy on laptop server filesystem

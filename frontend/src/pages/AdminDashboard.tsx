@@ -13,6 +13,7 @@ import { ManualControl } from '../components/ManualControl';
 import { EmergencyStop } from '../components/EmergencyStop';
 import { DestinationList } from '../components/DestinationList';
 import { NavigationPanel } from '../components/NavigationPanel';
+import { AutonomousNavigationPanel } from '../components/AutonomousNavigationPanel';
 import { Mapping } from './Mapping';
 import { Navigation } from './Navigation';
 import { Settings } from './Settings';
@@ -61,10 +62,40 @@ const DashboardHome = () => (
         <LiveCamera />
       </div>
 
-      {/* Right: Live 2D SLAM Map */}
+      {/* Right: Live 2D SLAM Map (Fixed World Frame, Dynamic LiDAR Angle) */}
       <div className="h-[480px] rounded-2xl overflow-hidden border border-white/10 shadow-2xl glass-panel relative">
         <MapCanvas />
       </div>
+    </div>
+
+    {/* Autonomous Room Navigation & Waypoint Dispatch (1-Click Flags 1-4 & Point-to-Point) */}
+    <AutonomousNavigationPanel />
+
+    {/* House Simulation Quick Launch Banner */}
+    <div className="p-4 rounded-2xl bg-gradient-to-r from-cyan-950/40 via-purple-950/40 to-slate-950/80 border border-cyan-500/30 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300">
+          <Gamepad2 size={22} />
+        </div>
+        <div>
+          <div className="text-sm font-black text-white tracking-wide flex items-center gap-2">
+            <span>PAGANI ARCHITECTURAL HOUSE SIMULATOR</span>
+            <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono font-bold">
+              3 PAGANI TRIMS • 5 ROOMS
+            </span>
+          </div>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Test autonomous trail navigation in the 5-room floor plan with Zen Garden, living room, and master suite.
+          </p>
+        </div>
+      </div>
+
+      <Link
+        to="/admin/simulator-game"
+        className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-black text-xs uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)] active:scale-95 flex items-center gap-2"
+      >
+        <Gamepad2 size={16} /> Launch House Simulator
+      </Link>
     </div>
 
     {/* Cockpit Gauges & Controls */}

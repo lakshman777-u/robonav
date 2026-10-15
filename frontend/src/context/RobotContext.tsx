@@ -6,6 +6,7 @@ import { MapData } from '../types/map';
 import { Destination } from '../types/navigation';
 import { getDestinations, getCurrentMap, getRobotTelemetry } from '../services/api';
 import { getToken } from '../services/auth';
+import { updateOccupancyPixels } from '../utils/mapRenderer';
 import toast from 'react-hot-toast';
 
 export interface RobotContextType {
@@ -84,6 +85,7 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
         setMapData((prev) => {
           const width = msg.data.width || prev?.width || 600;
           const height = msg.data.height || prev?.height || 600;
+          updateOccupancyPixels(msg.data.updates, width, height);
           const newGrid = prev?.occupancy_grid ? [...prev.occupancy_grid] : new Array(width * height).fill(-1);
           msg.data.updates.forEach((u: {x: number, y: number, val: number}) => {
             const idx = u.y * width + u.x;

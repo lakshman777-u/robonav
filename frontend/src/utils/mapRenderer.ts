@@ -45,6 +45,33 @@ export const invalidateGridCache = () => {
   cachedGridRef = null;
 };
 
+export const updateOccupancyPixels = (
+  updates: { x: number; y: number; val: number }[],
+  width: number = 600,
+  height: number = 600
+) => {
+  if (typeof document === 'undefined') return;
+  if (!offscreenCanvas || offscreenCanvas.width !== width || offscreenCanvas.height !== height) {
+    offscreenCanvas = document.createElement('canvas');
+    offscreenCanvas.width = width;
+    offscreenCanvas.height = height;
+    offscreenCtx = offscreenCanvas.getContext('2d');
+  }
+  if (!offscreenCtx) return;
+
+  for (let i = 0; i < updates.length; i++) {
+    const u = updates[i];
+    if (u.x < 0 || u.x >= width || u.y < 0 || u.y >= height) continue;
+    if (u.val >= 100) {
+      offscreenCtx.fillStyle = '#00f0ff';
+      offscreenCtx.fillRect(u.x, u.y, 1, 1);
+    } else if (u.val === 0) {
+      offscreenCtx.fillStyle = 'rgba(15, 23, 42, 0.86)';
+      offscreenCtx.fillRect(u.x, u.y, 1, 1);
+    }
+  }
+};
+
 export const getOccupancyCanvas = (
   grid: number[],
   width: number,
@@ -123,10 +150,12 @@ export const drawGrid = (
 };
 
 // Draw Continuous Solid Wall Contours and Ambient Explored Room Interior (NO SCATTERED DOTS)
+// The room walls remain 100% STATIONARY in world space while only the robot and LiDAR angle rotate.
 export const drawRoomContour = (
   ctx: CanvasRenderingContext2D,
   robotX: number,
   robotY: number,
+  robotHeading: number,
   rays: { angle: number; distance: number }[],
   scale: number,
   offset: { x: number; y: number }
@@ -144,11 +173,12 @@ export const drawRoomContour = (
 
   const validPoints: ProcessedPoint[] = [];
 
-  // 1. Process valid rays with proper degree to radian conversion
+  // 1. Transform laser hits into STATIC world map coordinates
+  // (robotHeading + ray.angle) locks room walls in place so the room NEVER spins!
   rays.forEach(ray => {
-    if (ray.distance < 0.15 || ray.distance > 8.0) return;
-    const angleDeg = ((ray.angle % 360) + 360) % 360;
-    const rad = (angleDeg * Math.PI) / 180;
+    if (ray.distance < 0.10 || ray.distance > 8.0) return;
+    const globalAngleDeg = (((robotHeading + ray.angle) % 360) + 360) % 360;
+    const rad = (globalAngleDeg * Math.PI) / 180;
     const wx = robotX + ray.distance * Math.cos(rad);
     const wy = robotY + ray.distance * Math.sin(rad);
     const pos = worldToCanvas(wx, wy, scale, offset.x, offset.y);
@@ -157,7 +187,7 @@ export const drawRoomContour = (
       cx: pos.x,
       cy: pos.y,
       dist: ray.distance,
-      angle: angleDeg
+      angle: globalAngleDeg
     });
   });
 
@@ -174,13 +204,13 @@ export const drawRoomContour = (
     ctx.lineTo(validPoints[i].cx, validPoints[i].cy);
   }
   ctx.closePath();
-  ctx.fillStyle = 'rgba(6, 182, 212, 0.07)';
+  ctx.fillStyle = 'rgba(6, 182, 212, 0.08)';
   ctx.fill();
   ctx.restore();
 
   // 4. Partition adjacent points into continuous wall chains
-  // A wall segment continues if adjacent points have small angular step (<= 4.5°)
-  // AND small Euclidean distance in world meters (<= 0.40m).
+  // A wall segment continues if adjacent points have small angular step (<= 8.0°)
+  // AND small Euclidean distance in world meters (<= 0.85m).
   const wallChains: ProcessedPoint[][] = [];
   let currentChain: ProcessedPoint[] = [validPoints[0]];
 
@@ -190,7 +220,7 @@ export const drawRoomContour = (
     const angleDiff = curr.angle - prev.angle;
     const distEuclid = Math.hypot(curr.wx - prev.wx, curr.wy - prev.wy);
 
-    if (angleDiff <= 4.5 && distEuclid <= 0.40) {
+    if (angleDiff <= 8.0 && distEuclid <= 0.85) {
       currentChain.push(curr);
     } else {
       if (currentChain.length >= 2) {
@@ -206,7 +236,7 @@ export const drawRoomContour = (
     const last = currentChain[currentChain.length - 1];
     const wrapAngle = (first.angle + 360) - last.angle;
     const wrapEuclid = Math.hypot(first.wx - last.wx, first.wy - last.wy);
-    if (wrapAngle <= 4.5 && wrapEuclid <= 0.40 && wallChains.length > 0) {
+    if (wrapAngle <= 8.0 && wrapEuclid <= 0.85 && wallChains.length > 0) {
       wallChains[0] = [...currentChain, ...wallChains[0]];
     } else {
       wallChains.push(currentChain);
@@ -242,7 +272,7 @@ export const drawRoomContour = (
   });
 };
 
-// Draw Robot Chassis and Turret Heading
+// Draw Robot Chassis, LiDAR Turret, and Active LiDAR Heading Angle
 export const drawRobot = (
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -257,6 +287,17 @@ export const drawRobot = (
   ctx.save();
   ctx.translate(pos.x, pos.y);
   ctx.rotate(rad);
+
+  // Subtle active LiDAR scanning fan cone in front of the robot showing live LiDAR angle
+  const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, 42);
+  grad.addColorStop(0, 'rgba(6, 182, 212, 0.40)');
+  grad.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.arc(0, 0, 42, -Math.PI / 4, Math.PI / 4);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
   
   // Robot chassis body
   ctx.beginPath();
@@ -272,27 +313,29 @@ export const drawRobot = (
   ctx.fillRect(-7, -16, 14, 4);
   ctx.fillRect(-7, 12, 14, 4);
 
-  // Forward Heading Pointer
+  // Forward Heading Pointer (LiDAR angle arrow)
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  ctx.lineTo(20, 0);
-  ctx.strokeStyle = '#38bdf8';
+  ctx.lineTo(24, 0);
+  ctx.strokeStyle = '#00f0ff';
   ctx.lineWidth = 3;
   ctx.stroke();
 
   // Arrowhead
   ctx.beginPath();
-  ctx.moveTo(20, 0);
-  ctx.lineTo(13, -5);
-  ctx.lineTo(13, 5);
+  ctx.moveTo(24, 0);
+  ctx.lineTo(16, -6);
+  ctx.lineTo(16, 6);
   ctx.closePath();
-  ctx.fillStyle = '#38bdf8';
+  ctx.fillStyle = '#00f0ff';
   ctx.fill();
 
-  // Center YDLIDAR Turret
+  // Center YDLIDAR Turret with illuminated core
   ctx.beginPath();
-  ctx.arc(0, 0, 4.5, 0, 2 * Math.PI);
+  ctx.arc(0, 0, 5, 0, 2 * Math.PI);
   ctx.fillStyle = '#f43f5e';
+  ctx.shadowColor = '#f43f5e';
+  ctx.shadowBlur = 8;
   ctx.fill();
   
   ctx.restore();

@@ -3,7 +3,8 @@ import { RESOLUTION, ORIGIN_X, ORIGIN_Y } from '../utils/mapRenderer';
 
 export const useMap = () => {
   const [scale, setScale] = useState(1.0);
-  const [offset, setOffset] = useState({ x: 50, y: 25 });
+  // Default offset centers robot & room origin (0.0, 0.0) in the canvas
+  const [offset, setOffset] = useState({ x: -150, y: -275 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
 
@@ -31,9 +32,12 @@ export const useMap = () => {
 
   const resetView = useCallback((canvasW: number = 900, canvasH: number = 650) => {
     setScale(1.0);
+    const cellPixelSize = 2.0;
+    const gx = (0.0 - ORIGIN_X) / RESOLUTION;
+    const gy = (0.0 - ORIGIN_Y) / RESOLUTION;
     setOffset({
-      x: (canvasW - 400 * 2.0) / 2,
-      y: (canvasH - 300 * 2.0) / 2
+      x: canvasW / 2 - gx * cellPixelSize,
+      y: canvasH / 2 - gy * cellPixelSize
     });
   }, []);
 

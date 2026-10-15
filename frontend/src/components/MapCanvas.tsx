@@ -55,6 +55,12 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
   });
 
   useEffect(() => {
+    if (canvasRef.current) {
+      centerOnRobot(rx, ry, canvasRef.current.width || 900, canvasRef.current.height || 650);
+    }
+  }, []);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -131,8 +137,9 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
       }
 
       // 4. Draw continuous 360° LiDAR solid room walls & bounce-backed floor area (NO DOTS, NO SPIDERWEB RAYS)
+      // The room walls remain completely stationary while only the robot and LiDAR angle rotate
       if (curSensor?.lidar?.rays && curSensor.lidar.rays.length > 0) {
-        drawRoomContour(ctx, smoothX, smoothY, curSensor.lidar.rays, curScale, curOffset);
+        drawRoomContour(ctx, smoothX, smoothY, smoothHeading, curSensor.lidar.rays, curScale, curOffset);
       }
 
       // 5. Draw planned autonomous navigation path

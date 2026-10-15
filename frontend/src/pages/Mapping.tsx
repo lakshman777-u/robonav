@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Scan, Play, Square, Trash2, Download, HardDrive, 
   Layers, RefreshCw, Cpu, AlertTriangle, ArrowUp, ArrowDown, 
   ArrowLeft, ArrowRight, PauseCircle, CheckCircle2, X, Compass, MapPin,
-  Snowflake, RotateCcw, FilePlus, Flag, Crosshair, Pause, Save
+  Snowflake, RotateCcw, FilePlus, Flag, Crosshair, Pause, Save, Gamepad2
 } from 'lucide-react';
 import { MapCanvas } from '../components/MapCanvas';
 import { LidarPolarView } from '../components/LidarPolarView';
+import { AutonomousNavigationPanel } from '../components/AutonomousNavigationPanel';
 import { useRobotStatus } from '../hooks/useRobotStatus';
 import { useCarTrim } from '../context/CarTrimContext';
 import { 
@@ -584,6 +586,16 @@ export const Mapping = () => {
           >
             <Download size={15} className="text-cyan-400" />
           </button>
+
+          {/* Launch House Simulator Game */}
+          <Link
+            to="/admin/simulator-game"
+            className="px-3.5 py-2.5 rounded-xl bg-cyan-600/20 text-cyan-300 hover:bg-cyan-600/30 border border-cyan-500/40 text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-md"
+            title="Launch 5-Room Pagani House Simulator Game"
+          >
+            <Gamepad2 size={15} />
+            <span className="hidden sm:inline">Play Pagani Sim</span>
+          </Link>
         </div>
       </div>
 
@@ -728,6 +740,9 @@ export const Mapping = () => {
           })}
         </div>
       </div>
+
+      {/* Autonomous Room Navigation & Dispatch Panel */}
+      <AutonomousNavigationPanel />
 
       {/* Quick Manual Save & Screen Reset Bar */}
       <div className="glass-panel p-3.5 rounded-2xl border border-cyan-500/30 bg-slate-950/70 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono">
