@@ -3,15 +3,21 @@ import { useMap } from '../hooks/useMap';
 import { useRobotStatus } from '../hooks/useRobotStatus';
 import { useCarTrim } from '../context/CarTrimContext';
 import { 
-  drawGrid, drawRobot, drawDestination, drawPath, 
+  drawGrid, drawRobot, drawDestination, drawRoomFlags, drawPath, 
   canvasToWorld, drawLidarRays, drawRoomContour, drawMetricGuides,
   drawTrajectoryTrail
 } from '../utils/mapRenderer';
 import { createDestination } from '../services/api';
 import toast from 'react-hot-toast';
-import { Crosshair, ZoomIn, ZoomOut, RotateCcw, Scan, Compass } from 'lucide-react';
+import { Crosshair, ZoomIn, ZoomOut, RotateCcw, Scan, Compass, Flag, X } from 'lucide-react';
 
-export const MapCanvas = () => {
+interface MapCanvasProps {
+  flagPlacementMode?: number | null;
+  onFlagPlaced?: (flagNumber: number, x: number, y: number) => void;
+  onCancelFlagPlacement?: () => void;
+}
+
+export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlagPlacement }: MapCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animPoseRef = useRef({ x: 0.0, y: 0.0, heading: 0.0, initialized: false });
   const { 
@@ -102,9 +108,9 @@ export const MapCanvas = () => {
         drawPath(ctx, navigationPath, scale, offset);
       }
 
-      // 6. Draw destination pins
+      // 6. Draw destination pins and custom room flags
       if (destinations) {
-        destinations.forEach((d: any) => drawDestination(ctx, d.x, d.y, scale, offset, d.name));
+        drawRoomFlags(ctx, destinations, scale, offset);
       }
 
       // 7. Draw robot chassis, wheels, heading arrow, and LiDAR turret with smooth pose
@@ -119,7 +125,20 @@ export const MapCanvas = () => {
     return () => cancelAnimationFrame(animationFrameId);
   }, [mapData, robotStatus, scale, offset, destinations, navigationPath, sensorData, rx, ry]);
 
+  const onCanvasClick = (e: MouseEvent<HTMLCanvasElement>) => {
+    if (!flagPlacementMode || !onFlagPlaced) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const worldPos = canvasToWorld(cx, cy, scale, offset.x, offset.y);
+    onFlagPlaced(flagPlacementMode, worldPos.x, worldPos.y);
+  };
+
   const onCanvasDoubleClick = async (e: MouseEvent<HTMLCanvasElement>) => {
+    if (flagPlacementMode) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -190,10 +209,31 @@ export const MapCanvas = () => {
         </button>
       </div>
 
+      {/* Flag Placement Active Mode HUD Banner */}
+      {flagPlacementMode && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-slate-950/95 border border-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.4)] animate-pulse font-mono">
+          <Flag size={18} className="text-cyan-400" />
+          <span className="text-xs font-bold text-white uppercase tracking-wider">
+            Click anywhere on 2D map to fix <span className="text-cyan-300 font-black">Flag {flagPlacementMode} (Room {flagPlacementMode})</span>
+          </span>
+          {onCancelFlagPlacement && (
+            <button
+              onClick={onCancelFlagPlacement}
+              className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-gray-400 hover:text-white transition-colors"
+              title="Cancel flag placement"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Bottom Left Double Click Hint */}
       <div className="absolute bottom-4 left-4 z-10 pointer-events-none">
         <div className="px-3 py-1 rounded-lg bg-slate-950/80 backdrop-blur-sm border border-white/5 text-[10px] font-mono text-gray-400">
-          TIP: Double-click to set goal • Drag to pan • Scroll to zoom
+          {flagPlacementMode 
+            ? `AIMING: Click on map to place Flag ${flagPlacementMode}` 
+            : 'TIP: Double-click to set goal • Drag to pan • Scroll to zoom'}
         </div>
       </div>
 
@@ -202,12 +242,13 @@ export const MapCanvas = () => {
         ref={canvasRef}
         width={900}
         height={650}
-        className="w-full h-full cursor-grab active:cursor-grabbing"
+        className={`w-full h-full ${flagPlacementMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`}
         onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onClick={onCanvasClick}
+        onMouseDown={flagPlacementMode ? undefined : handleMouseDown}
+        onMouseMove={flagPlacementMode ? undefined : handleMouseMove}
+        onMouseUp={flagPlacementMode ? undefined : handleMouseUp}
+        onMouseLeave={flagPlacementMode ? undefined : handleMouseUp}
         onDoubleClick={onCanvasDoubleClick}
       />
     </div>

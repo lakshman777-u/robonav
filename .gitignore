@@ -29,3 +29,7 @@ __pycache__/
 autonomous_robot_webots/
 robonav1
 
+# Generated SLAM Maps
+maps/*
+!maps/.gitkeep
+

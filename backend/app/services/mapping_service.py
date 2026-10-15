@@ -14,14 +14,29 @@ from app.database import AsyncSessionLocal, Map
 from app.simulation.robot_simulator import simulator
 from app.services.lidar_service import is_driver_running, start_driver, detect_lidar_port
 
-current_map_data: Dict[str, Any] = {}
+MAP_WIDTH = 600
+MAP_HEIGHT = 600
+MAP_RESOLUTION = 0.05
+MAP_ORIGIN_X = -15.0
+MAP_ORIGIN_Y = -15.0
+
+current_map_data: Dict[str, Any] = {
+    "name": "Building Map",
+    "resolution": MAP_RESOLUTION,
+    "width": MAP_WIDTH,
+    "height": MAP_HEIGHT,
+    "origin_x": MAP_ORIGIN_X,
+    "origin_y": MAP_ORIGIN_Y,
+    "grid": [[-1 for _ in range(MAP_WIDTH)] for _ in range(MAP_HEIGHT)],
+    "real_points_mapped": 0
+}
 
 def get_current_map() -> Optional[Dict[str, Any]]:
     return current_map_data if current_map_data else None
 
-async def start_mapping(map_name: str, clean: bool = True) -> bool:
-    """Initiates 2D SLAM mapping session, ensures LiDAR is running, and notifies clients."""
-    global current_map_data
+async def start_mapping(map_name: str, clean: bool = False) -> bool:
+    """Starts or resumes 2D continuous multi-room SLAM mapping."""
+    global current_map_data, accumulated_updates
     from app.services.lidar_odometry import lidar_odometry
     from app.services.robot_service import robot_state
 
@@ -30,11 +45,34 @@ async def start_mapping(map_name: str, clean: bool = True) -> bool:
         start_driver(mock=False)
 
     if transition("MAPPING"):
-        # Reset odometry tracking origin to (0, 0, 0)
-        lidar_odometry.start(0.0, 0.0, 0.0)
-        robot_state.position = {"x": 0.0, "y": 0.0}
-        robot_state.orientation = 0.0
-        robot_state.current_path = [{"x": 0.0, "y": 0.0}]
+        # If clean reset requested or grid not initialized
+        if clean or not current_map_data or "grid" not in current_map_data:
+            lidar_odometry.start(0.0, 0.0, 0.0)
+            robot_state.position = {"x": 0.0, "y": 0.0}
+            robot_state.orientation = 0.0
+            robot_state.current_path = [{"x": 0.0, "y": 0.0}]
+            grid = [[-1 for _ in range(MAP_WIDTH)] for _ in range(MAP_HEIGHT)]
+            accumulated_updates = {}
+            current_map_data = {
+                "name": map_name or "Building Map",
+                "resolution": MAP_RESOLUTION,
+                "width": MAP_WIDTH,
+                "height": MAP_HEIGHT,
+                "origin_x": MAP_ORIGIN_X,
+                "origin_y": MAP_ORIGIN_Y,
+                "grid": grid,
+                "real_points_mapped": 0
+            }
+        else:
+            # Resuming without clearing: preserve all previous rooms and walls!
+            if not lidar_odometry.is_tracking:
+                lidar_odometry.start(
+                    robot_state.position.get("x", 0.0),
+                    robot_state.position.get("y", 0.0),
+                    robot_state.orientation
+                )
+            if map_name:
+                current_map_data["name"] = map_name
 
         # Tell ESP32 to display MAPPING expression on OLED
         await manager.send_to_robot({
@@ -43,58 +81,65 @@ async def start_mapping(map_name: str, clean: bool = True) -> bool:
             "expression": "MAPPING"
         })
 
-        # Initialize clean grid for genuine real-world LiDAR exploration
-        grid = [[-1 for _ in range(400)] for _ in range(300)]
-
-        current_map_data = {
-            "name": map_name,
-            "resolution": 0.05,
-            "width": 400,
-            "height": 300,
-            "origin_x": -10.0,
-            "origin_y": -7.5,
-            "grid": grid,
-            "real_points_mapped": 0
-        }
-
-        # Tell simulator
-        await simulator.command_queue.put({"type": "START_MAPPING"})
-
-        # Broadcast initial clean map to browser clients
-        flat_grid = [-1] * (400 * 300)
+        # Broadcast map state to all browser clients
+        flat_grid = [val for row in current_map_data["grid"] for val in row]
         await manager.broadcast_to_browsers({
             "type": "map_update",
             "data": {
                 "occupancy_grid": flat_grid,
-                "width": 400,
-                "height": 300,
-                "resolution": 0.05,
-                "name": map_name,
+                "width": MAP_WIDTH,
+                "height": MAP_HEIGHT,
+                "resolution": MAP_RESOLUTION,
+                "origin_x": MAP_ORIGIN_X,
+                "origin_y": MAP_ORIGIN_Y,
+                "name": current_map_data.get("name", "Building Map"),
                 "status": "building"
             }
         })
         return True
     return False
 
-async def stop_mapping(save_as_name: Optional[str] = None) -> bool:
-    """Freezes and stops 2D SLAM mapping, saves the resulting map, and sets state to MAP_READY."""
+async def pause_mapping() -> bool:
+    """Stops / freezes mapping right where it is, keeping all mapped rooms and trajectory intact."""
     global current_map_data
     from app.services.lidar_odometry import lidar_odometry
     if transition("MAP_READY"):
         lidar_odometry.stop()
-        await simulator.command_queue.put({"type": "STOP_MAPPING"})
-        if current_map_data:
-            if save_as_name and save_as_name.strip():
-                current_map_data["name"] = save_as_name.strip()
-            # If no real LiDAR points were captured, fall back to simulator grid
-            if current_map_data.get("real_points_mapped", 0) == 0 and not is_driver_running():
-                current_map_data["grid"] = simulator.explored_map
-            await save_map(current_map_data)
+        await manager.broadcast_to_browsers({
+            "type": "map_status",
+            "data": {"status": "paused", "message": "Map frozen. All scanned areas preserved."}
+        })
         return True
     return False
 
+async def finalize_map(save_as_name: Optional[str] = None) -> bool:
+    """Finalizes and saves the 2D multi-room map to laptop server (maps/) and database."""
+    global current_map_data
+    from app.services.lidar_odometry import lidar_odometry
+    lidar_odometry.stop()
+    transition("MAP_READY")
+
+    if current_map_data:
+        if save_as_name and save_as_name.strip():
+            current_map_data["name"] = save_as_name.strip()
+        await save_map(current_map_data)
+        await manager.broadcast_to_browsers({
+            "type": "map_status",
+            "data": {
+                "status": "saved", 
+                "name": current_map_data.get("name"),
+                "message": f"Successfully finalized and saved map '{current_map_data.get('name')}'"
+            }
+        })
+        return True
+    return False
+
+async def stop_mapping(save_as_name: Optional[str] = None) -> bool:
+    """Alias for finalize_map for backward compatibility."""
+    return await finalize_map(save_as_name)
+
 async def clear_map() -> bool:
-    """Clears the live occupancy grid and resets odometry so a fresh scan can begin."""
+    """Clears the live building grid and resets odometry back to origin (0, 0)."""
     global current_map_data, accumulated_updates, last_map_broadcast
     from app.services.lidar_odometry import lidar_odometry
     from app.services.robot_service import robot_state
@@ -105,26 +150,28 @@ async def clear_map() -> bool:
     robot_state.current_path = [{"x": 0.0, "y": 0.0}]
 
     current_map_data = {
-        "name": "Live SLAM Map",
-        "resolution": 0.05,
-        "width": 400,
-        "height": 300,
-        "origin_x": -10.0,
-        "origin_y": -7.5,
-        "grid": [[-1 for _ in range(400)] for _ in range(300)],
+        "name": "Building Map",
+        "resolution": MAP_RESOLUTION,
+        "width": MAP_WIDTH,
+        "height": MAP_HEIGHT,
+        "origin_x": MAP_ORIGIN_X,
+        "origin_y": MAP_ORIGIN_Y,
+        "grid": [[-1 for _ in range(MAP_WIDTH)] for _ in range(MAP_HEIGHT)],
         "real_points_mapped": 0
     }
     accumulated_updates = {}
     last_map_broadcast = 0.0
-    flat_grid = [-1] * (400 * 300)
+    flat_grid = [-1] * (MAP_WIDTH * MAP_HEIGHT)
     await manager.broadcast_to_browsers({
         "type": "map_update",
         "data": {
             "occupancy_grid": flat_grid,
-            "width": 400,
-            "height": 300,
-            "resolution": 0.05,
-            "name": "Live SLAM Map",
+            "width": MAP_WIDTH,
+            "height": MAP_HEIGHT,
+            "resolution": MAP_RESOLUTION,
+            "origin_x": MAP_ORIGIN_X,
+            "origin_y": MAP_ORIGIN_Y,
+            "name": "Building Map",
             "status": "cleared"
         }
     })
@@ -178,26 +225,26 @@ def process_lidar_points(points: list, position: dict, orientation: float):
     global current_map_data, accumulated_updates, last_map_broadcast
     if not current_map_data:
         current_map_data = {
-            "name": "Live SLAM Map",
-            "resolution": 0.05,
-            "width": 400,
-            "height": 300,
-            "origin_x": -10.0,
-            "origin_y": -7.5,
-            "grid": [[-1 for _ in range(400)] for _ in range(300)],
+            "name": "Building Map",
+            "resolution": MAP_RESOLUTION,
+            "width": MAP_WIDTH,
+            "height": MAP_HEIGHT,
+            "origin_x": MAP_ORIGIN_X,
+            "origin_y": MAP_ORIGIN_Y,
+            "grid": [[-1 for _ in range(MAP_WIDTH)] for _ in range(MAP_HEIGHT)],
             "real_points_mapped": 0
         }
 
     grid = current_map_data.get("grid")
     if not grid:
-        grid = [[-1 for _ in range(400)] for _ in range(300)]
+        grid = [[-1 for _ in range(MAP_WIDTH)] for _ in range(MAP_HEIGHT)]
         current_map_data["grid"] = grid
 
-    width = current_map_data.get("width", 400)
-    height = current_map_data.get("height", 300)
-    res = current_map_data.get("resolution", 0.05)
-    origin_x = current_map_data.get("origin_x", -10.0)
-    origin_y = current_map_data.get("origin_y", -7.5)
+    width = current_map_data.get("width", MAP_WIDTH)
+    height = current_map_data.get("height", MAP_HEIGHT)
+    res = current_map_data.get("resolution", MAP_RESOLUTION)
+    origin_x = current_map_data.get("origin_x", MAP_ORIGIN_X)
+    origin_y = current_map_data.get("origin_y", MAP_ORIGIN_Y)
 
     rx = position.get("x", 0.0)
     ry = position.get("y", 0.0)
@@ -208,7 +255,7 @@ def process_lidar_points(points: list, position: dict, orientation: float):
     for pt in points:
         angle_deg = pt.get("angle", 0.0)
         dist = pt.get("distance", 0.0)
-        if dist <= 0.10 or dist > 10.0:
+        if dist <= 0.10 or dist > 12.0:
             continue
 
         points_counted += 1
@@ -216,7 +263,8 @@ def process_lidar_points(points: list, position: dict, orientation: float):
         cos_a = math.cos(rad)
         sin_a = math.sin(rad)
 
-        # 1. Ray trace free space
+        # 1. Ray trace free space: Only mark unexplored cells (-1) as free (0).
+        # NEVER erase solid obstacle walls (100) that were already mapped!
         curr = 0.0
         while curr < dist - res:
             curr += res
@@ -225,7 +273,7 @@ def process_lidar_points(points: list, position: dict, orientation: float):
             fx = int((curr_x - origin_x) / res)
             fy = int((curr_y - origin_y) / res)
             if 0 <= fx < width and 0 <= fy < height:
-                if grid[fy][fx] != 0:
+                if grid[fy][fx] == -1:
                     grid[fy][fx] = 0
                     accumulated_updates[fy * width + fx] = 0
 

@@ -82,8 +82,8 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
     const onMap = (msg: any) => {
       if (msg.data && msg.data.updates) {
         setMapData((prev) => {
-          const width = prev?.width || 400;
-          const height = prev?.height || 300;
+          const width = msg.data.width || prev?.width || 600;
+          const height = msg.data.height || prev?.height || 600;
           const newGrid = prev?.occupancy_grid ? [...prev.occupancy_grid] : new Array(width * height).fill(-1);
           msg.data.updates.forEach((u: {x: number, y: number, val: number}) => {
             const idx = u.y * width + u.x;
@@ -97,9 +97,9 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
             resolution: prev?.resolution || 0.05,
             width,
             height,
-            origin: prev?.origin || { x: 0, y: 0 },
+            origin: prev?.origin || { x: msg.data.origin_x ?? -15.0, y: msg.data.origin_y ?? -15.0 },
             occupancy_grid: newGrid,
-            start_position: prev?.start_position || { x: 2.0, y: 2.0 },
+            start_position: prev?.start_position || { x: 0.0, y: 0.0 },
             status: prev?.status || 'building'
           };
           return updated;
@@ -117,10 +117,15 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
       console.warn('Robot connection notice:', msg.message);
     };
 
+    const onDestUpdate = () => {
+      fetchDestinations();
+    };
+
     wsService.onMessage('robot_status', onStatus);
     wsService.onMessage('sensor_data', onSensor);
     wsService.onMessage('map_update', onMap);
     wsService.onMessage('log_event', onLog);
+    wsService.onMessage('destination_update', onDestUpdate);
     wsService.onMessage('robot_connection_lost', onConnLost);
 
     // 2. HTTP Polling sync fallback (guarantees live telemetry even if WS reconnects)
@@ -175,9 +180,9 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
             map_id: md.map_id || prev?.map_id || 'MAP-LIVE',
             name: md.name || prev?.name || 'Live SLAM Map',
             resolution: md.resolution || 0.05,
-            width: md.width || 400,
-            height: md.height || 300,
-            origin: { x: md.origin_x || 0.0, y: md.origin_y || 0.0 },
+            width: md.width || 600,
+            height: md.height || 600,
+            origin: { x: md.origin_x ?? -15.0, y: md.origin_y ?? -15.0 },
             occupancy_grid: md.occupancy_grid,
             start_position: { x: 0.0, y: 0.0 },
             status: md.status || 'building'

@@ -3,20 +3,21 @@ import {
   Scan, Play, Square, Trash2, Download, HardDrive, 
   Layers, RefreshCw, Cpu, AlertTriangle, ArrowUp, ArrowDown, 
   ArrowLeft, ArrowRight, PauseCircle, CheckCircle2, X, Compass, MapPin,
-  Snowflake, RotateCcw, FilePlus
+  Snowflake, RotateCcw, FilePlus, Flag, Crosshair, Pause
 } from 'lucide-react';
 import { MapCanvas } from '../components/MapCanvas';
 import { LidarPolarView } from '../components/LidarPolarView';
 import { useRobotStatus } from '../hooks/useRobotStatus';
 import { useCarTrim } from '../context/CarTrimContext';
 import { 
-  startMapping, stopMapping, clearMap, getMaps, 
+  startMapping, pauseMapping, finalizeMap, stopMapping, clearMap, getMaps, 
+  setRoomFlag, deleteRoomFlag,
   loadSavedMap, deleteMap, deleteAllMaps, getLidarStatus, startLidar, stopLidar 
 } from '../services/api';
 import toast from 'react-hot-toast';
 
 export const Mapping = () => {
-  const { robotStatus, mapData, sendCommand } = useRobotStatus();
+  const { robotStatus, mapData, sendCommand, destinations, reloadDestinations } = useRobotStatus();
   const { config } = useCarTrim();
 
   const [isMapping, setIsMapping] = useState(false);
@@ -26,6 +27,7 @@ export const Mapping = () => {
   const [lidarStatus, setLidarStatus] = useState<any>(null);
   const [driveSpeed, setDriveSpeed] = useState(0.40);
   const [loadingAction, setLoadingAction] = useState(false);
+  const [flagPlacementMode, setFlagPlacementMode] = useState<number | null>(null);
 
   // Name prompt modal state
   const [showNameModal, setShowNameModal] = useState(false);
@@ -105,37 +107,111 @@ export const Mapping = () => {
     }
   };
 
-  // 2. FREEZE & SAVE: Freezes current scan and saves to server
-  const handleOpenFreezeSaveModal = () => {
-    setSaveAsName(activeLocationName);
-    setShowFreezeSaveModal(true);
+  // Room Flag helper
+  const getFlagDestination = (flagNum: number) => {
+    if (!destinations) return null;
+    return destinations.find((d: any) => {
+      if (d.dest_id === `FLAG-${flagNum}`) return true;
+      if (d.name && (new RegExp(`flag\\s*${flagNum}`, 'i').test(d.name) || new RegExp(`room\\s*${flagNum}`, 'i').test(d.name))) return true;
+      return false;
+    });
   };
 
-  const handleConfirmFreezeAndSave = async () => {
-    const finalName = saveAsName.trim() || activeLocationName;
-    setShowFreezeSaveModal(false);
+  const handleFixFlagAtRobot = async (flagNum: number) => {
+    const rx = Number((robotStatus?.position?.x ?? 0.0).toFixed(2));
+    const ry = Number((robotStatus?.position?.y ?? 0.0).toFixed(2));
     setLoadingAction(true);
-
     try {
-      await stopMapping(finalName);
-      setIsMapping(false);
-      setIsFrozen(true);
-      setActiveLocationName(finalName);
-      toast.success(`Frozen & Saved "${finalName}" 2D map to web page & server!`, { duration: 5000 });
-      fetchMapsAndLidar();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to freeze and save map');
+      await setRoomFlag(flagNum, rx, ry, `Room ${flagNum}`);
+      await reloadDestinations();
+      toast.success(`🚩 Flag ${flagNum} (Room ${flagNum}) fixed at Robot coordinate (${rx}, ${ry})m!`);
+    } catch (err) {
+      toast.error(`Failed to set Flag ${flagNum}`);
     } finally {
       setLoadingAction(false);
     }
   };
 
-  // 3. RESET (RECONSTRUCT): Clears live canvas and resets odometry to (0,0) to reconstruct fresh
+  const handleStartPickFlagOnMap = (flagNum: number) => {
+    setFlagPlacementMode(flagNum);
+    toast(`Click anywhere on 2D map to fix Flag ${flagNum} (Room ${flagNum})`, { icon: '🚩' });
+  };
+
+  const handleFlagPlacedOnCanvas = async (flagNum: number, x: number, y: number) => {
+    setFlagPlacementMode(null);
+    const rx = Number(x.toFixed(2));
+    const ry = Number(y.toFixed(2));
+    setLoadingAction(true);
+    try {
+      await setRoomFlag(flagNum, rx, ry, `Room ${flagNum}`);
+      await reloadDestinations();
+      toast.success(`🚩 Flag ${flagNum} (Room ${flagNum}) placed at (${rx}, ${ry})m!`);
+    } catch (err) {
+      toast.error(`Failed to place Flag ${flagNum}`);
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const handleDeleteFlag = async (flagNum: number) => {
+    setLoadingAction(true);
+    try {
+      await deleteRoomFlag(flagNum);
+      await reloadDestinations();
+      toast.success(`Cleared Flag ${flagNum} (Room ${flagNum})`);
+    } catch (err) {
+      toast.error(`Failed to clear Flag ${flagNum}`);
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  // STOP / FREEZE mapping without erasing data
+  const handleStopFreeze = async () => {
+    setLoadingAction(true);
+    try {
+      await pauseMapping();
+      setIsMapping(false);
+      setIsFrozen(true);
+      toast.success(`⏸ Map Frozen! All scanned rooms and walls preserved right where they are.`, { duration: 4000 });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to freeze map');
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  // 2. END & SAVE MAP: Finalizes scan and saves to server maps/ and database
+  const handleOpenFreezeSaveModal = () => {
+    setSaveAsName(activeLocationName || 'Building Map');
+    setShowFreezeSaveModal(true);
+  };
+
+  const handleConfirmFreezeAndSave = async () => {
+    const finalName = saveAsName.trim() || activeLocationName || 'Building Map';
+    setShowFreezeSaveModal(false);
+    setLoadingAction(true);
+
+    try {
+      await finalizeMap(finalName);
+      setIsMapping(false);
+      setIsFrozen(true);
+      setActiveLocationName(finalName);
+      toast.success(`Saved "${finalName}" 2D map to laptop server (maps/) & database!`, { duration: 5000 });
+      fetchMapsAndLidar();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to finalize and save map');
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  // 3. RESET MAP: Clears live canvas and resets odometry to (0,0) to reconstruct fresh
   const handleResetReconstruct = async () => {
-    if (window.confirm('Reset & Reconstruct: Clear live 2D map and reset location to (0,0) to reconstruct the map fresh from here? (Saved maps in library are kept).')) {
+    if (window.confirm('Reset Map: Clear live 2D map and reset location to (0,0) to reconstruct the map fresh from here? (Saved maps in library are kept).')) {
       try {
         if (isMapping) {
-          await stopMapping();
+          await pauseMapping();
           setIsMapping(false);
         }
         setIsFrozen(false);
@@ -390,63 +466,72 @@ export const Mapping = () => {
           </p>
         </div>
 
-        {/* Master Action Controls: Start / Freeze & Save / Reset / Delete */}
+        {/* Master Action Controls: Start / Stop (Freeze) / End Map / Reset / Delete */}
         <div className="relative z-10 flex flex-wrap items-center gap-2.5">
-          {/* Button 1: Start 2D Scanning */}
+          {/* Button 1: Start 2D Mapping */}
           {isMapping ? (
             <div className="px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-emerald-900/30 animate-pulse">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              <span>SCANNING ACTIVE</span>
+              <span>▶ MAPPING ACTIVE</span>
             </div>
           ) : (
             <button
               onClick={handleOpenStartModal}
               disabled={loadingAction}
-              className="px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 shadow-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white border border-cyan-400/50 shadow-cyan-900/40"
-              title="Start lively 2D scanning and location tracking"
+              className="px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 shadow-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white border border-emerald-400/50 shadow-emerald-900/40"
+              title="Start continuous 2D room mapping"
             >
               <Play size={15} fill="white" />
-              <span>▶ START 2D SCANNING</span>
+              <span>START MAPPING</span>
             </button>
           )}
 
-          {/* Button 2: Freeze & Save / Save As */}
+          {/* Button 2: Stop / Freeze Map */}
+          <button
+            onClick={handleStopFreeze}
+            disabled={loadingAction || !isMapping}
+            className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 border shadow-lg ${
+              isMapping 
+                ? 'bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 text-white border-cyan-400 shadow-cyan-900/40' 
+                : 'bg-slate-900/60 border-white/10 text-gray-500 cursor-not-allowed'
+            }`}
+            title="Freeze mapping right where it is, keeping all scanned areas preserved"
+          >
+            <Pause size={15} />
+            <span>STOP / FREEZE</span>
+          </button>
+
+          {/* Button 3: End Map & Save */}
           <button
             onClick={handleOpenFreezeSaveModal}
             disabled={loadingAction}
-            className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 border shadow-lg ${
-              isMapping 
-                ? 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 text-white border-blue-400 shadow-blue-900/40 animate-pulse' 
-                : (isFrozen 
-                    ? 'bg-indigo-950/80 border-indigo-500/50 text-indigo-300' 
-                    : 'bg-slate-900 border-white/10 text-gray-300 hover:bg-slate-800')
-            }`}
-            title="Freeze current scan and save map to laptop server"
+            className="px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white border border-purple-400/40 shadow-purple-900/40"
+            title="Finalize map and save to laptop server (maps/) and database"
           >
-            <Snowflake size={15} />
-            <span>{isFrozen ? '❄️ FROZEN & SAVED' : '❄️ FREEZE & SAVE'}</span>
+            <HardDrive size={15} />
+            <span>END & SAVE MAP</span>
           </button>
 
-          {/* Button 3: Reset / Reconstruct */}
+          {/* Button 4: Reset Map */}
           <button
             onClick={handleResetReconstruct}
             disabled={loadingAction}
             className="px-4 py-2.5 rounded-xl bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-500/50 text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-md"
-            title="Clear canvas & reset location to (0,0) to reconstruct map fresh without deleting saved library"
+            title="Clear canvas & reset location to (0,0) to start over again"
           >
             <RotateCcw size={15} className="text-amber-400" />
-            <span>RESET (RECONSTRUCT)</span>
+            <span>RESET MAP</span>
           </button>
 
-          {/* Button 4: Delete All / Fresh Start */}
+          {/* Button 5: Delete All (Fresh Start) */}
           <button
             onClick={handleDeleteAll}
             disabled={loadingAction}
             className="px-3.5 py-2.5 rounded-xl bg-red-950/60 hover:bg-red-900/60 text-red-300 border border-red-500/40 text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-md"
-            title="Delete all mappings and reset for a completely fresh beginning"
+            title="Delete all saved maps and start fresh"
           >
             <Trash2 size={15} className="text-red-400" />
-            <span>DELETE (FRESH START)</span>
+            <span>DELETE ALL</span>
           </button>
 
           {/* Toggle LiDAR Driver Hardware */}
@@ -513,12 +598,120 @@ export const Mapping = () => {
         </div>
       </div>
 
+      {/* Room Identification Flags Bar (Flags 1, 2, 3, 4) */}
+      <div className="glass-panel p-4 rounded-3xl border border-white/10 shadow-xl space-y-3 font-mono">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-2">
+          <div className="flex items-center gap-2">
+            <Flag size={16} className="text-cyan-400" />
+            <h3 className="text-xs font-black text-white uppercase tracking-wider">
+              Room Identification Flags (Flags 1 — 4)
+            </h3>
+            <span className="text-[10px] text-gray-400 hidden md:inline">
+              • Fix flag at robot's live coordinate while traveling between rooms, or pick manually on map
+            </span>
+          </div>
+          {flagPlacementMode && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-cyan-300 font-bold animate-pulse">
+                Click map to place Flag {flagPlacementMode}
+              </span>
+              <button
+                onClick={() => setFlagPlacementMode(null)}
+                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-gray-300 text-[10px]"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            { num: 1, name: 'Room 1', color: 'emerald', hex: '#10b981', border: 'border-emerald-500/40', bg: 'bg-emerald-950/40' },
+            { num: 2, name: 'Room 2', color: 'cyan', hex: '#06b6d4', border: 'border-cyan-500/40', bg: 'bg-cyan-950/40' },
+            { num: 3, name: 'Room 3', color: 'purple', hex: '#a855f7', border: 'border-purple-500/40', bg: 'bg-purple-950/40' },
+            { num: 4, name: 'Room 4', color: 'amber', hex: '#f59e0b', border: 'border-amber-500/40', bg: 'bg-amber-950/40' },
+          ].map(({ num, name, hex, border, bg }) => {
+            const dest = getFlagDestination(num);
+            const isPlaced = Boolean(dest);
+            const isAiming = flagPlacementMode === num;
+
+            return (
+              <div
+                key={num}
+                className={`p-3 rounded-2xl border transition-all ${bg} ${
+                  isAiming ? 'ring-2 ring-cyan-400 border-cyan-400 animate-pulse' : border
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1 mb-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="w-5 h-5 rounded-lg flex items-center justify-center font-black text-[11px] text-white shadow"
+                      style={{ backgroundColor: hex }}
+                    >
+                      {num}
+                    </span>
+                    <span className="font-bold text-white text-xs tracking-wider">{name}</span>
+                  </div>
+                  {isPlaced && dest ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/40">
+                        ({dest.x.toFixed(1)}, {dest.y.toFixed(1)})m
+                      </span>
+                      <button
+                        onClick={() => handleDeleteFlag(num)}
+                        className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-950/50"
+                        title={`Clear Flag ${num}`}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-gray-500 font-medium">Not Set</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 pt-1">
+                  <button
+                    onClick={() => handleFixFlagAtRobot(num)}
+                    disabled={loadingAction}
+                    className="flex-1 py-1.5 px-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-white text-[10px] font-bold border border-white/10 hover:border-white/30 flex items-center justify-center gap-1 transition-all"
+                    title={`Fix Flag ${num} at Robot's current pose (${(robotStatus?.position?.x ?? 0).toFixed(2)}, ${(robotStatus?.position?.y ?? 0).toFixed(2)})m`}
+                  >
+                    <Compass size={12} style={{ color: hex }} />
+                    <span>Fix at Robot</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleStartPickFlagOnMap(num)}
+                    disabled={loadingAction}
+                    className={`py-1.5 px-2 rounded-xl text-[10px] font-bold border flex items-center justify-center gap-1 transition-all ${
+                      isAiming
+                        ? 'bg-cyan-500 text-white border-cyan-400'
+                        : 'bg-slate-900/90 hover:bg-slate-800 text-gray-300 border-white/10 hover:border-white/30'
+                    }`}
+                    title={`Pick Flag ${num} location manually by clicking on the 2D map`}
+                  >
+                    <Crosshair size={12} style={{ color: hex }} />
+                    <span>Pick on Map</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* 2. Main Studio Grid: 2D Canvas (Left/Center) + Telemetry & Controls (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left Column (2 Cols): High-Resolution 2D SLAM Canvas */}
         <div className="lg:col-span-2 space-y-4">
           <div className="h-[620px] rounded-3xl overflow-hidden border border-white/10 shadow-2xl glass-panel relative">
-            <MapCanvas />
+            <MapCanvas 
+              flagPlacementMode={flagPlacementMode}
+              onFlagPlaced={handleFlagPlacedOnCanvas}
+              onCancelFlagPlacement={() => setFlagPlacementMode(null)}
+            />
           </div>
 
           {/* Quick Manual Teleop Bar for driving while mapping */}
@@ -619,11 +812,11 @@ export const Mapping = () => {
               </div>
               <div className="bg-slate-950/60 p-2 rounded-xl border border-white/5">
                 <div className="text-gray-400">GRID SIZE</div>
-                <div className="font-bold text-cyan-400">400 × 300 cells</div>
+                <div className="font-bold text-cyan-400">600 × 600 cells</div>
               </div>
               <div className="bg-slate-950/60 p-2 rounded-xl border border-white/5">
                 <div className="text-gray-400">EXPLORATION SPAN</div>
-                <div className="font-bold text-white">20.0m × 15.0m</div>
+                <div className="font-bold text-white">30.0m × 30.0m Building</div>
               </div>
               <div className="bg-slate-950/60 p-2 rounded-xl border border-white/5">
                 <div className="text-gray-400">SERVER STORAGE</div>

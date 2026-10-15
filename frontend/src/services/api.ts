@@ -120,7 +120,9 @@ export const getMaps = () => api.get('/maps');
 export const getCurrentMap = () => api.get('/maps/current');
 export const getMap = (mapId: string | number) => api.get(`/maps/${mapId}`);
 export const getRobotTelemetry = () => api.get('/robot/telemetry');
-export const startMapping = (name: string) => api.post('/maps/start', { name });
+export const startMapping = (name?: string) => api.post('/maps/start', { name: name || 'Building Map' });
+export const pauseMapping = () => api.post('/maps/pause');
+export const finalizeMap = (name?: string) => api.post('/maps/finalize', name ? { name } : {});
 export const stopMapping = (name?: string) => api.post('/maps/stop', name ? { name } : {});
 export const clearMap = () => api.post('/maps/clear');
 export const loadSavedMap = (mapId: string | number) => api.post(`/maps/${mapId}/load`);
@@ -131,6 +133,9 @@ export const startLidar = (mock: boolean = false) => api.post('/lidar/start', { 
 export const stopLidar = () => api.post('/lidar/stop');
 export const getDestinations = () => api.get('/destinations');
 export const createDestination = (data: any) => api.post('/destinations', data);
+export const setRoomFlag = (flagNumber: number, x: number, y: number, name?: string) => 
+  api.post('/destinations/flag', { flag_number: flagNumber, x, y, name });
+export const deleteRoomFlag = (flagNumber: number) => api.delete(`/destinations/flag/${flagNumber}`);
 export const updateDestination = (id: string | number, data: any) => api.put(`/destinations/${id}`, data);
 export const deleteDestination = (id: string | number) => api.delete(`/destinations/${id}`);
 export const requestNavigation = (destinationId: number) => api.post(`/navigation/request`, { destination_id: destinationId });

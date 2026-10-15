@@ -1,6 +1,6 @@
 export const RESOLUTION = 0.05; // 5 cm per grid cell
-export const ORIGIN_X = -10.0;  // 20m x 15m grid centered at (-10.0, -7.5)
-export const ORIGIN_Y = -7.5;
+export const ORIGIN_X = -15.0;  // 30m x 30m grid centered at (-15.0, -15.0)
+export const ORIGIN_Y = -15.0;
 
 // Convert World (meters) to Canvas (pixels)
 export const worldToCanvas = (
@@ -264,6 +264,152 @@ export const drawRobot = (
   ctx.restore();
 };
 
+export const getFlagNumber = (d: { name?: string; dest_id?: string; type?: string }): number | null => {
+  if (d.dest_id) {
+    const match = d.dest_id.match(/FLAG-(\d+)/i);
+    if (match) return parseInt(match[1], 10);
+  }
+  if (d.name) {
+    const matchFlag = d.name.match(/flag\s*(\d+)/i);
+    if (matchFlag) return parseInt(matchFlag[1], 10);
+    const matchRoom = d.name.match(/room\s*(\d+)/i);
+    if (matchRoom) return parseInt(matchRoom[1], 10);
+  }
+  return null;
+};
+
+export const drawRoomFlag = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  scale: number,
+  offset: { x: number; y: number },
+  name: string,
+  flagNum: number
+) => {
+  const pos = worldToCanvas(x, y, scale, offset.x, offset.y);
+
+  // Flag color palette
+  const palettes = [
+    { fill: '#10b981', border: '#059669', glow: 'rgba(16, 185, 129, 0.5)', text: '#6ee7b7' }, // Flag 1 (Emerald)
+    { fill: '#06b6d4', border: '#0891b2', glow: 'rgba(6, 182, 212, 0.5)', text: '#67e8f9' },  // Flag 2 (Cyan)
+    { fill: '#a855f7', border: '#9333ea', glow: 'rgba(168, 85, 247, 0.5)', text: '#d8b4fe' }, // Flag 3 (Purple)
+    { fill: '#f59e0b', border: '#d97706', glow: 'rgba(245, 158, 11, 0.5)', text: '#fcd34d' }, // Flag 4 (Amber)
+  ];
+  const c = palettes[(flagNum - 1) % palettes.length] || palettes[0];
+
+  ctx.save();
+
+  // 1. Glowing ground target circle
+  ctx.shadowColor = c.glow;
+  ctx.shadowBlur = 12;
+
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, 8, 0, 2 * Math.PI);
+  ctx.fillStyle = c.fill;
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Bullseye inner dot
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, 3, 0, 2 * Math.PI);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+
+  // 2. Vertical Flag Pole
+  ctx.shadowBlur = 0;
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y);
+  ctx.lineTo(pos.x, pos.y - 32);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // Pole Top Finial Sphere
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y - 33, 2.5, 0, 2 * Math.PI);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+
+  // 3. Pennant Flag Banner (Triangle)
+  ctx.shadowColor = c.glow;
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y - 32);
+  ctx.lineTo(pos.x + 24, pos.y - 23);
+  ctx.lineTo(pos.x, pos.y - 14);
+  ctx.closePath();
+  ctx.fillStyle = c.fill;
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Flag Number inside Banner
+  ctx.shadowBlur = 0;
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(flagNum), pos.x + 9, pos.y - 23);
+
+  // 4. Room Label Badge above the flag
+  const label = name || `Room ${flagNum}`;
+  ctx.font = 'bold 11px monospace';
+  const textW = ctx.measureText(label).width;
+  const pillW = Math.max(textW + 16, 60);
+  const pillH = 20;
+  const pillX = pos.x - pillW / 2;
+  const pillY = pos.y - 56;
+
+  // Badge background
+  ctx.fillStyle = 'rgba(2, 6, 23, 0.90)';
+  ctx.strokeStyle = c.border;
+  ctx.lineWidth = 1.5;
+  if ((ctx as any).roundRect) {
+    ctx.beginPath();
+    (ctx as any).roundRect(pillX, pillY, pillW, pillH, 6);
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    ctx.fillRect(pillX, pillY, pillW, pillH);
+    ctx.strokeRect(pillX, pillY, pillW, pillH);
+  }
+
+  // Badge text
+  ctx.fillStyle = c.text;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, pos.x, pillY + pillH / 2);
+
+  // 5. World Coordinate subtick: (X.X, Y.Y)m
+  ctx.font = '9px monospace';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+  ctx.fillText(`(${x.toFixed(2)}, ${y.toFixed(2)})m`, pos.x, pos.y + 18);
+
+  ctx.restore();
+};
+
+export const drawRoomFlags = (
+  ctx: CanvasRenderingContext2D,
+  destinations: any[],
+  scale: number,
+  offset: { x: number; y: number }
+) => {
+  if (!destinations || destinations.length === 0) return;
+
+  destinations.forEach((d: any) => {
+    const flagNum = getFlagNumber(d);
+    if (flagNum && flagNum >= 1 && flagNum <= 4) {
+      drawRoomFlag(ctx, d.x, d.y, scale, offset, d.name, flagNum);
+    } else {
+      drawDestination(ctx, d.x, d.y, scale, offset, d.name);
+    }
+  });
+};
+
 export const drawDestination = (
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -383,8 +529,8 @@ export const drawMetricGuides = (
   ctx.lineWidth = 1;
   ctx.setLineDash([2, 4]);
 
-  // Meter grid lines (-8m to +8m)
-  for (let m = -8; m <= 8; m++) {
+  // Meter grid lines across 30m building grid (-14m to +14m)
+  for (let m = -14; m <= 14; m += 2) {
     if (m === 0) continue;
     const pos = worldToCanvas(m, 0, scale, offset.x, offset.y);
     ctx.beginPath();
