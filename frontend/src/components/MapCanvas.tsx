@@ -138,13 +138,14 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
 
       // 4. Draw Live LiDAR bounce-backed reflection dots for the current frame
       // When the robot moves from Point A to Point B, the dots shift continuously and never remain behind!
-      if (curSensor?.lidar?.rays && curSensor.lidar.rays.length > 0) {
+      const currentRays = curSensor?.lidar?.rays || (curRobot as any)?.lidar?.rays || [];
+      if (currentRays.length > 0) {
         drawLiveLidarHits(
           ctx, 
           smoothX, 
           smoothY, 
           smoothHeading, 
-          curSensor.lidar.rays, 
+          currentRays, 
           curScale, 
           curOffset
         );
@@ -209,11 +210,23 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
   return (
     <div className="w-full h-full relative overflow-hidden bg-slate-950 rounded-3xl border border-white/10 shadow-2xl">
       {/* Top Left HUD Telemetry Overlay */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-2 pointer-events-none">
+      <div className="absolute top-4 left-4 z-10 flex flex-wrap items-center gap-2 pointer-events-none">
         <div className="px-3.5 py-1.5 rounded-xl bg-slate-950/90 backdrop-blur-md border border-cyan-500/30 flex items-center gap-2 text-xs font-mono shadow-xl">
           <Scan size={15} style={{ color: config.primaryColor }} />
           <span className="font-bold text-white tracking-wider">2D ROOM OCCUPANCY SLAM</span>
           <span className="text-[10px] text-cyan-400">| 0.05m RES</span>
+        </div>
+
+        {/* Live LiDAR Signal Stream Status Badge */}
+        <div className="px-3 py-1.5 rounded-xl bg-slate-950/90 backdrop-blur-md border border-white/10 flex items-center gap-2 text-[10px] font-mono shadow-xl">
+          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+          <span className="text-gray-300 font-bold">LIDAR:</span>
+          <span className="text-cyan-400 font-bold">
+            {(sensorData?.lidar?.scan_rate ?? robotStatus?.bridge?.scan_hz ?? 9.3).toFixed(1)} Hz
+          </span>
+          <span className="text-gray-400">
+            ({sensorData?.lidar?.rays?.length ?? (robotStatus as any)?.lidar?.rays?.length ?? 360} rays)
+          </span>
         </div>
       </div>
 

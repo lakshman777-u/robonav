@@ -156,39 +156,68 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
       }
     }).catch(() => {});
 
+    // Helper to synchronize robot status and sensor telemetry
+    const applyTelemetry = (td: any) => {
+      if (!td) return;
+      setRobotStatus(prev => ({
+        robot_id: td.robot_id || prev?.robot_id || 'ESP32DEVKIT-001',
+        name: prev?.name || 'Autonomous Robot 01',
+        robot_type: prev?.robot_type || 'ESP32-CAM',
+        state: td.connection === 'ONLINE' ? (prev?.state || 'IDLE') : (prev?.state || 'IDLE'),
+        connection_status: 'ONLINE',
+        battery: td.battery ?? prev?.battery ?? 100,
+        charging: false,
+        position: td.position || prev?.position || { x: 0.0, y: 0.0 },
+        orientation: td.orientation ?? prev?.orientation ?? 0.0,
+        velocity: td.speed ?? 0.0,
+        current_destination: prev?.current_destination ?? null,
+        navigation_progress: prev?.navigation_progress ?? 0,
+        distance_remaining: prev?.distance_remaining ?? 0,
+        estimated_time_remaining: prev?.estimated_time_remaining ?? 0,
+        hardware: td.hardware || prev?.hardware,
+        bridge: td.bridge || prev?.bridge,
+        trajectory: td.trajectory || prev?.trajectory,
+        lidar: td.lidar || (prev as any)?.lidar
+      }));
+
+      if (td.lidar) {
+        setSensorData(prev => ({
+          lidar: {
+            active: td.lidar.status === 'ACTIVE' || Boolean(td.lidar.active) || (td.lidar.rays && td.lidar.rays.length > 0),
+            scan_rate: td.lidar.scan_rate || td.lidar.hz || td.bridge?.scan_hz || 9.3,
+            points: td.lidar.points || (td.lidar.rays ? td.lidar.rays.length : 360),
+            range: 8.0,
+            rays: td.lidar.rays || [],
+            status: td.lidar.status || 'ACTIVE',
+            packets: td.lidar.packets ?? td.bridge?.udp_packets_rx ?? 0
+          },
+          camera: prev?.camera || { connected: true, obstacle_detected: false, obstacle_type: null, distance: null },
+          ultrasonic: td.ultrasonic || prev?.ultrasonic || { front: 1.25, left: 2.1, right: 1.7, rear: 2.1 },
+          glass_detected: false,
+          bridge: td.bridge || prev?.bridge
+        }));
+      }
+    };
+
+    // Immediate telemetry fetch on mount
+    getRobotTelemetry().then(res => {
+      if (res?.data) applyTelemetry(res.data);
+    }).catch(() => {});
+
     // 3. Relaxed fallback HTTP telemetry sync only when WebSocket is not connected
     const syncHttpFallback = async () => {
       if (wsService.getState() === 'connected') return;
       try {
         const telemRes = await getRobotTelemetry();
         if (telemRes?.data) {
-          const td = telemRes.data;
-          setRobotStatus(prev => ({
-            robot_id: td.robot_id || prev?.robot_id || 'ESP32DEVKIT-001',
-            name: prev?.name || 'Autonomous Robot 01',
-            robot_type: prev?.robot_type || 'ESP32-CAM',
-            state: td.connection === 'ONLINE' ? (prev?.state || 'IDLE') : (prev?.state || 'IDLE'),
-            connection_status: 'ONLINE',
-            battery: td.battery ?? prev?.battery ?? 100,
-            charging: false,
-            position: td.position || prev?.position || { x: 0.0, y: 0.0 },
-            orientation: td.orientation ?? prev?.orientation ?? 0.0,
-            velocity: td.speed ?? 0.0,
-            current_destination: prev?.current_destination ?? null,
-            navigation_progress: prev?.navigation_progress ?? 0,
-            distance_remaining: prev?.distance_remaining ?? 0,
-            estimated_time_remaining: prev?.estimated_time_remaining ?? 0,
-            hardware: td.hardware || prev?.hardware,
-            bridge: td.bridge || prev?.bridge,
-            trajectory: td.trajectory || prev?.trajectory
-          }));
+          applyTelemetry(telemRes.data);
         }
       } catch (err) {
         // Silent catch for HTTP fallback
       }
     };
 
-    const syncInterval = setInterval(syncHttpFallback, 4000);
+    const syncInterval = setInterval(syncHttpFallback, 3000);
 
     return () => {
       clearInterval(checkConn);

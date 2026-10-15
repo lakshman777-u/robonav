@@ -10,6 +10,7 @@ import { RobotStatus } from '../components/RobotStatus';
 import { NavigationPanel } from '../components/NavigationPanel';
 import { WaitingTimer } from '../components/WaitingTimer';
 import { UserVideoGuide } from '../components/UserVideoGuide';
+import { LidarSignalsHUD } from '../components/LidarSignalsHUD';
 import { LogOut, Video, X, Cpu } from 'lucide-react';
 
 export const UserDashboard = () => {
@@ -96,6 +97,11 @@ export const UserDashboard = () => {
             <WaitingTimer />
             <DestinationList />
           </div>
+        </div>
+
+        {/* Live LiDAR Signals & Optical Waveform Suite */}
+        <div className="pb-4">
+          <LidarSignalsHUD />
         </div>
       </div>
     </div>

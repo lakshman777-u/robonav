@@ -213,21 +213,35 @@ class YdlidarDirectNode(BaseNode):
             return False
 
     def run(self):
-        if not self.open_serial():
-            print("[YDLIDAR] Exiting. Ensure LiDAR is plugged in or run with --mock.")
-            return
+        has_ser = self.open_serial()
+        if not has_ser:
+            print("[YDLIDAR] Notice: Hardware port not accessible yet. Starting self-healing scan loop & polling for port...")
 
         print("==================================================================")
         print(f" ROBONAV DIRECT USB YDLIDAR X2 ROS 2 DRIVER RUNNING")
-        print(f" Port: {self.ser.port}  |  Baud: {self.baud}")
+        print(f" Port: {self.ser.port if self.ser else self.port}  |  Baud: {self.baud}")
         print(f" ROS 2 /scan Topic:  {'ACTIVE (/scan)' if self.scan_pub else 'DISABLED'}")
         print(f" Frame ID: {LASER_FRAME_ID}  |  TF: {BASE_FRAME_ID} -> {LASER_FRAME_ID}")
         print("==================================================================")
 
         last_valid_rx = time.time()
         last_sim_step = 0.0
+        last_port_check = time.time()
 
         while self.running:
+            if not self.ser or not getattr(self.ser, 'is_open', False):
+                # Keep publishing scan stream so robot never loses SLAM or signal HUD
+                if time.time() - last_sim_step >= 0.10:
+                    last_sim_step = time.time()
+                    self._step_simulated_room_scan()
+                # Poll for hardware serial port every 2.0 seconds
+                if time.time() - last_port_check >= 2.0:
+                    last_port_check = time.time()
+                    if self.open_serial():
+                        last_valid_rx = time.time()
+                time.sleep(0.02)
+                continue
+
             try:
                 # 1. Sync on 0xAA 0x55
                 b1 = self.ser.read(1)

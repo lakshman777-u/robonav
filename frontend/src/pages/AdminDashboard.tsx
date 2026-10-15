@@ -23,6 +23,7 @@ import { ApiDocs } from './ApiDocs';
 import { VideoTutorials } from './VideoTutorials';
 import { PaganiSimulatorGame } from './PaganiSimulatorGame';
 import { SystemLog } from '../components/SystemLog';
+import { LidarSignalsHUD } from '../components/LidarSignalsHUD';
 
 const SidebarLink = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => {
   const location = useLocation();
@@ -67,6 +68,9 @@ const DashboardHome = () => (
         <MapCanvas />
       </div>
     </div>
+
+    {/* Live LiDAR Signals Suite & Real-time Optical Waveform Scanner */}
+    <LidarSignalsHUD />
 
     {/* Autonomous Room Navigation & Waypoint Dispatch (1-Click Flags 1-4 & Point-to-Point) */}
     <AutonomousNavigationPanel />
