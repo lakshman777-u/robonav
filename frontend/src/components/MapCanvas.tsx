@@ -4,7 +4,7 @@ import { useRobotStatus } from '../hooks/useRobotStatus';
 import { useCarTrim } from '../context/CarTrimContext';
 import { 
   drawGrid, drawRobot, drawDestination, drawRoomFlags, drawPath, 
-  canvasToWorld, drawRoomContour, drawMetricGuides,
+  canvasToWorld, drawLidarScanRays, drawMetricGuides,
   drawTrajectoryTrail
 } from '../utils/mapRenderer';
 import { createDestination } from '../services/api';
@@ -136,10 +136,10 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
         drawTrajectoryTrail(ctx, curRobot.trajectory, curScale, curOffset);
       }
 
-      // 4. Draw continuous 360° LiDAR solid room walls & bounce-backed floor area (NO DOTS, NO SPIDERWEB RAYS)
-      // The room walls remain completely stationary while only the robot and LiDAR angle rotate
+      // 4. Draw faint live LiDAR scan rays radiating to stationary obstacle walls
+      // (The 2D SLAM diagram stays completely still — only the LiDAR sensor puck moves!)
       if (curSensor?.lidar?.rays && curSensor.lidar.rays.length > 0) {
-        drawRoomContour(ctx, smoothX, smoothY, smoothHeading, curSensor.lidar.rays, curScale, curOffset);
+        drawLidarScanRays(ctx, smoothX, smoothY, smoothHeading, curSensor.lidar.rays, curScale, curOffset);
       }
 
       // 5. Draw planned autonomous navigation path

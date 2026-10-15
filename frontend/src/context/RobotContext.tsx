@@ -6,8 +6,7 @@ import { MapData } from '../types/map';
 import { Destination } from '../types/navigation';
 import { getDestinations, getCurrentMap, getRobotTelemetry } from '../services/api';
 import { getToken } from '../services/auth';
-import { updateOccupancyPixels } from '../utils/mapRenderer';
-import toast from 'react-hot-toast';
+import { updateOccupancyPixels, initOccupancyCanvas } from '../utils/mapRenderer';
 
 export interface RobotContextType {
   robotStatus: RobotStatus | null;
@@ -86,13 +85,20 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
           const width = msg.data.width || prev?.width || 600;
           const height = msg.data.height || prev?.height || 600;
           updateOccupancyPixels(msg.data.updates, width, height);
-          const newGrid = prev?.occupancy_grid ? [...prev.occupancy_grid] : new Array(width * height).fill(-1);
-          msg.data.updates.forEach((u: {x: number, y: number, val: number}) => {
+
+          // In-place mutation to eliminate 360,000-array cloning 4x/second
+          let grid = prev?.occupancy_grid;
+          if (!grid) {
+            grid = new Array(width * height).fill(-1);
+          }
+          for (let i = 0; i < msg.data.updates.length; i++) {
+            const u = msg.data.updates[i];
             const idx = u.y * width + u.x;
-            if (idx >= 0 && idx < newGrid.length) {
-              newGrid[idx] = u.val;
+            if (idx >= 0 && idx < grid.length) {
+              grid[idx] = u.val;
             }
-          });
+          }
+
           const updated: MapData = {
             map_id: prev?.map_id || 'MAP-LIVE',
             name: prev?.name || 'Live SLAM Map',
@@ -100,13 +106,14 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
             width,
             height,
             origin: prev?.origin || { x: msg.data.origin_x ?? -15.0, y: msg.data.origin_y ?? -15.0 },
-            occupancy_grid: newGrid,
+            occupancy_grid: grid,
             start_position: prev?.start_position || { x: 0.0, y: 0.0 },
             status: prev?.status || 'building'
           };
           return updated;
         });
       } else if (msg.data && msg.data.occupancy_grid) {
+        initOccupancyCanvas(msg.data.occupancy_grid, msg.data.width || 600, msg.data.height || 600);
         setMapData(msg.data);
       }
     };
@@ -134,6 +141,7 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
     getCurrentMap().then(res => {
       if (res?.data && res.data.occupancy_grid) {
         const md = res.data;
+        initOccupancyCanvas(md.occupancy_grid, md.width || 600, md.height || 600);
         setMapData({
           map_id: md.map_id || 'MAP-LIVE',
           name: md.name || 'Live SLAM Map',

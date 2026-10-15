@@ -275,6 +275,7 @@ def process_lidar_points(points: list, position: dict, orientation: float):
             if 0 <= fx < width and 0 <= fy < height:
                 if grid[fy][fx] == -1:
                     grid[fy][fx] = 0
+                    accumulated_updates[fy * width + fx] = 0
 
         # 2. Mark solid bounce-backed obstacle wall
         obs_x = rx + dist * cos_a

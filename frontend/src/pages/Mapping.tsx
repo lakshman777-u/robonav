@@ -16,6 +16,7 @@ import {
   setRoomFlag, deleteRoomFlag,
   loadSavedMap, deleteMap, deleteAllMaps, getLidarStatus, startLidar, stopLidar 
 } from '../services/api';
+import { resetOccupancyCanvas } from '../utils/mapRenderer';
 import toast from 'react-hot-toast';
 
 export const Mapping = () => {
@@ -234,6 +235,7 @@ export const Mapping = () => {
         setIsMapping(false);
       }
       setIsFrozen(false);
+      resetOccupancyCanvas();
       await clearMap();
       toast.success('🔄 2D Map & Screen reset to (0,0)! Canvas cleared.');
     } catch (e) {
@@ -252,6 +254,7 @@ export const Mapping = () => {
           setIsMapping(false);
         }
         setIsFrozen(false);
+        resetOccupancyCanvas();
         await deleteAllMaps();
         toast.success('All mappings wiped clean. Ready for a new fresh beginning!');
         fetchMapsAndLidar();

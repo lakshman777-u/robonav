@@ -41,8 +41,95 @@ let offscreenCanvas: HTMLCanvasElement | null = null;
 let offscreenCtx: CanvasRenderingContext2D | null = null;
 let cachedGridRef: number[] | null = null;
 
+export const ensureOffscreenCanvas = (width: number = 600, height: number = 600) => {
+  if (typeof document === 'undefined') return;
+  if (!offscreenCanvas || offscreenCanvas.width !== width || offscreenCanvas.height !== height) {
+    offscreenCanvas = document.createElement('canvas');
+    offscreenCanvas.width = width;
+    offscreenCanvas.height = height;
+    offscreenCtx = offscreenCanvas.getContext('2d');
+    cachedGridRef = null;
+  }
+};
+
+export const resetOccupancyCanvas = (width: number = 600, height: number = 600) => {
+  ensureOffscreenCanvas(width, height);
+  if (offscreenCtx) {
+    offscreenCtx.clearRect(0, 0, width, height);
+  }
+  cachedGridRef = null;
+};
+
 export const invalidateGridCache = () => {
   cachedGridRef = null;
+};
+
+export const initOccupancyCanvas = (
+  grid: number[],
+  width: number = 600,
+  height: number = 600
+) => {
+  if (typeof document === 'undefined') return;
+  ensureOffscreenCanvas(width, height);
+  if (!offscreenCtx) return;
+
+  offscreenCtx.clearRect(0, 0, width, height);
+  const imgData = offscreenCtx.createImageData(width, height);
+  const data = imgData.data;
+
+  // Pass 1: Explored free floor: Pure clean solid white (#ffffff, matching Image 1 & 2)
+  for (let i = 0; i < grid.length; i++) {
+    const val = grid[i];
+    const p = i * 4;
+
+    if (val === 0) {
+      data[p] = 255;
+      data[p + 1] = 255;
+      data[p + 2] = 255;
+      data[p + 3] = 255;
+    } else {
+      // Unexplored space: transparent so the canvas background shows through
+      data[p + 3] = 0;
+    }
+  }
+
+  // Pass 2: Obstacle walls safety inflation buffer (coral pink / soft red, matching user's uploaded images)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      if (grid[idx] >= 100) {
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            const ny = y + dy;
+            const nx = x + dx;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              if (grid[ny * width + nx] !== 100) {
+                const np = (ny * width + nx) * 4;
+                data[np] = 248;     // R
+                data[np + 1] = 113; // G
+                data[np + 2] = 113; // B (coral pink)
+                data[np + 3] = 180; // A
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Pass 3: Solid jet black obstacle wall core
+  for (let i = 0; i < grid.length; i++) {
+    if (grid[i] >= 100) {
+      const p = i * 4;
+      data[p] = 5;
+      data[p + 1] = 5;
+      data[p + 2] = 8;
+      data[p + 3] = 255;
+    }
+  }
+
+  offscreenCtx.putImageData(imgData, 0, 0);
+  cachedGridRef = grid;
 };
 
 export const updateOccupancyPixels = (
@@ -51,22 +138,35 @@ export const updateOccupancyPixels = (
   height: number = 600
 ) => {
   if (typeof document === 'undefined') return;
-  if (!offscreenCanvas || offscreenCanvas.width !== width || offscreenCanvas.height !== height) {
-    offscreenCanvas = document.createElement('canvas');
-    offscreenCanvas.width = width;
-    offscreenCanvas.height = height;
-    offscreenCtx = offscreenCanvas.getContext('2d');
-  }
+  ensureOffscreenCanvas(width, height);
   if (!offscreenCtx) return;
 
+  // 1. Paint newly explored free floor cells (pure clean solid white)
+  for (let i = 0; i < updates.length; i++) {
+    const u = updates[i];
+    if (u.x < 0 || u.x >= width || u.y < 0 || u.y >= height) continue;
+    if (u.val === 0) {
+      offscreenCtx.fillStyle = '#ffffff';
+      offscreenCtx.fillRect(u.x, u.y, 1, 1);
+    }
+  }
+
+  // 2. Paint coral-pink safety inflation buffer around obstacle wall hits
   for (let i = 0; i < updates.length; i++) {
     const u = updates[i];
     if (u.x < 0 || u.x >= width || u.y < 0 || u.y >= height) continue;
     if (u.val >= 100) {
-      offscreenCtx.fillStyle = '#00f0ff';
-      offscreenCtx.fillRect(u.x, u.y, 1, 1);
-    } else if (u.val === 0) {
-      offscreenCtx.fillStyle = 'rgba(15, 23, 42, 0.86)';
+      offscreenCtx.fillStyle = 'rgba(244, 63, 94, 0.45)';
+      offscreenCtx.fillRect(u.x - 2, u.y - 2, 5, 5);
+    }
+  }
+
+  // 3. Paint crisp solid black obstacle wall cores
+  for (let i = 0; i < updates.length; i++) {
+    const u = updates[i];
+    if (u.x < 0 || u.x >= width || u.y < 0 || u.y >= height) continue;
+    if (u.val >= 100) {
+      offscreenCtx.fillStyle = '#050508';
       offscreenCtx.fillRect(u.x, u.y, 1, 1);
     }
   }
@@ -78,48 +178,18 @@ export const getOccupancyCanvas = (
   height: number
 ): HTMLCanvasElement | null => {
   if (typeof document === 'undefined') return null;
-  if (!offscreenCanvas || offscreenCanvas.width !== width || offscreenCanvas.height !== height) {
-    offscreenCanvas = document.createElement('canvas');
-    offscreenCanvas.width = width;
-    offscreenCanvas.height = height;
-    offscreenCtx = offscreenCanvas.getContext('2d');
-    cachedGridRef = null;
-  }
+  ensureOffscreenCanvas(width, height);
 
-  // Only re-rasterize when grid array reference or data actually changes
-  if (cachedGridRef !== grid && offscreenCtx) {
-    cachedGridRef = grid;
-    const imgData = offscreenCtx.createImageData(width, height);
-    const data = imgData.data;
-
-    for (let i = 0; i < grid.length; i++) {
-      const val = grid[i];
-      const p = i * 4;
-
-      if (val >= 100) {
-        // Solid Wall Obstacle (vibrant solid cyan wall)
-        data[p] = 0;       // R
-        data[p + 1] = 240; // G
-        data[p + 2] = 255; // B
-        data[p + 3] = 255; // A
-      } else if (val === 0) {
-        // Explored free floor
-        data[p] = 15;      // R
-        data[p + 1] = 23;  // G
-        data[p + 2] = 42;  // B
-        data[p + 3] = 220; // A
-      } else {
-        // Unexplored (-1)
-        data[p + 3] = 0;
-      }
-    }
-    offscreenCtx.putImageData(imgData, 0, 0);
+  // If cached grid reference changed from a map load
+  if (cachedGridRef !== grid && grid && grid.length > 0) {
+    initOccupancyCanvas(grid, width, height);
   }
 
   return offscreenCanvas;
 };
 
 // Draw Occupancy Grid with hardware-accelerated offscreen canvas
+// The 2D diagram stays completely STILL at the same position.
 export const drawGrid = (
   ctx: CanvasRenderingContext2D,
   grid: number[],
@@ -132,26 +202,26 @@ export const drawGrid = (
   const totalW = width * cellPixelSize;
   const totalH = height * cellPixelSize;
 
-  // 1. Draw subtle boundary bounds
-  ctx.fillStyle = '#030812';
+  // 1. Draw SLAM map background (clean neutral slate gray #1e293b, matching Image 2)
+  ctx.fillStyle = '#1e293b';
   ctx.fillRect(offset.x, offset.y, totalW, totalH);
 
-  // 2. Hardware-accelerated GPU draw in 1 single blit (0.02ms)
+  // 2. Hardware-accelerated GPU draw of the STILL 2D diagram in 1 single blit (0.02ms)
   const oCanvas = getOccupancyCanvas(grid, width, height);
   if (oCanvas) {
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(oCanvas, offset.x, offset.y, totalW, totalH);
   }
 
-  // Subtle grid room border
-  ctx.strokeStyle = 'rgba(6, 182, 212, 0.25)';
+  // Subtle perimeter border
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
   ctx.lineWidth = 1;
   ctx.strokeRect(offset.x, offset.y, totalW, totalH);
 };
 
-// Draw Continuous Solid Wall Contours and Ambient Explored Room Interior (NO SCATTERED DOTS)
-// The room walls remain 100% STATIONARY in world space while only the robot and LiDAR angle rotate.
-export const drawRoomContour = (
+// Draw Live LiDAR Sensor Rays radiating from the moving LiDAR point to the static walls
+// (NO DOTS — does NOT draw or move any walls — the 2D diagram stays completely still!)
+export const drawLidarScanRays = (
   ctx: CanvasRenderingContext2D,
   robotX: number,
   robotY: number,
@@ -162,117 +232,30 @@ export const drawRoomContour = (
 ) => {
   if (!rays || rays.length < 8) return;
 
-  interface ProcessedPoint {
-    wx: number;
-    wy: number;
-    cx: number;
-    cy: number;
-    dist: number;
-    angle: number;
-  }
+  const rPos = worldToCanvas(robotX, robotY, scale, offset.x, offset.y);
 
-  const validPoints: ProcessedPoint[] = [];
+  ctx.save();
+  ctx.lineWidth = 0.8;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'; // Faint delicate white rays as seen in Image 1 & 2
 
-  // 1. Transform laser hits into STATIC world map coordinates
-  // (robotHeading + ray.angle) locks room walls in place so the room NEVER spins!
-  rays.forEach(ray => {
-    if (ray.distance < 0.10 || ray.distance > 8.0) return;
+  ctx.beginPath();
+  for (let i = 0; i < rays.length; i += 2) {
+    const ray = rays[i];
+    if (ray.distance < 0.10 || ray.distance > 8.0) continue;
     const globalAngleDeg = (((robotHeading + ray.angle) % 360) + 360) % 360;
     const rad = (globalAngleDeg * Math.PI) / 180;
     const wx = robotX + ray.distance * Math.cos(rad);
     const wy = robotY + ray.distance * Math.sin(rad);
     const pos = worldToCanvas(wx, wy, scale, offset.x, offset.y);
-    validPoints.push({
-      wx, wy,
-      cx: pos.x,
-      cy: pos.y,
-      dist: ray.distance,
-      angle: globalAngleDeg
-    });
-  });
 
-  if (validPoints.length < 4) return;
-
-  // 2. Sort points strictly by angle around the robot (0 to 360)
-  validPoints.sort((a, b) => a.angle - b.angle);
-
-  // 3. Fill explored room interior floor polygon with soft ambient tint
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(validPoints[0].cx, validPoints[0].cy);
-  for (let i = 1; i < validPoints.length; i++) {
-    ctx.lineTo(validPoints[i].cx, validPoints[i].cy);
+    ctx.moveTo(rPos.x, rPos.y);
+    ctx.lineTo(pos.x, pos.y);
   }
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(6, 182, 212, 0.08)';
-  ctx.fill();
+  ctx.stroke();
   ctx.restore();
-
-  // 4. Partition adjacent points into continuous wall chains
-  // A wall segment continues if adjacent points have small angular step (<= 8.0°)
-  // AND small Euclidean distance in world meters (<= 0.85m).
-  const wallChains: ProcessedPoint[][] = [];
-  let currentChain: ProcessedPoint[] = [validPoints[0]];
-
-  for (let i = 1; i < validPoints.length; i++) {
-    const prev = validPoints[i - 1];
-    const curr = validPoints[i];
-    const angleDiff = curr.angle - prev.angle;
-    const distEuclid = Math.hypot(curr.wx - prev.wx, curr.wy - prev.wy);
-
-    if (angleDiff <= 8.0 && distEuclid <= 0.85) {
-      currentChain.push(curr);
-    } else {
-      if (currentChain.length >= 2) {
-        wallChains.push(currentChain);
-      }
-      currentChain = [curr];
-    }
-  }
-
-  // Check wrap-around between last point (near 360°) and first point (near 0°)
-  if (currentChain.length >= 2) {
-    const first = validPoints[0];
-    const last = currentChain[currentChain.length - 1];
-    const wrapAngle = (first.angle + 360) - last.angle;
-    const wrapEuclid = Math.hypot(first.wx - last.wx, first.wy - last.wy);
-    if (wrapAngle <= 8.0 && wrapEuclid <= 0.85 && wallChains.length > 0) {
-      wallChains[0] = [...currentChain, ...wallChains[0]];
-    } else {
-      wallChains.push(currentChain);
-    }
-  }
-
-  // 5. Render continuous solid glowing wall segments (only solid walls & bounce-backed area)
-  wallChains.forEach(chain => {
-    if (chain.length < 2) return;
-
-    // Pass A: Outer luminous cyan neon wall stroke
-    ctx.save();
-    ctx.strokeStyle = '#00f0ff';
-    ctx.lineWidth = 4.0;
-    ctx.shadowColor = '#00f0ff';
-    ctx.shadowBlur = 10;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    ctx.beginPath();
-    ctx.moveTo(chain[0].cx, chain[0].cy);
-    for (let i = 1; i < chain.length; i++) {
-      ctx.lineTo(chain[i].cx, chain[i].cy);
-    }
-    ctx.stroke();
-
-    // Pass B: Crisp white inner wall core line
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.6;
-    ctx.shadowBlur = 0;
-    ctx.stroke();
-    ctx.restore();
-  });
 };
 
-// Draw Robot Chassis, LiDAR Turret, and Active LiDAR Heading Angle
+// Draw Robot Chassis / LiDAR Puck, Turret, and Active LiDAR Heading Angle (Matching user image)
 export const drawRobot = (
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -289,53 +272,53 @@ export const drawRobot = (
   ctx.rotate(rad);
 
   // Subtle active LiDAR scanning fan cone in front of the robot showing live LiDAR angle
-  const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, 42);
-  grad.addColorStop(0, 'rgba(6, 182, 212, 0.40)');
+  const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, 38);
+  grad.addColorStop(0, 'rgba(6, 182, 212, 0.35)');
   grad.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  ctx.arc(0, 0, 42, -Math.PI / 4, Math.PI / 4);
+  ctx.arc(0, 0, 38, -Math.PI / 4, Math.PI / 4);
   ctx.closePath();
   ctx.fillStyle = grad;
   ctx.fill();
   
-  // Robot chassis body
+  // Sleek circular LiDAR puck body (Image 2)
   ctx.beginPath();
-  ctx.arc(0, 0, 13, 0, 2 * Math.PI);
-  ctx.fillStyle = '#0284c7';
+  ctx.arc(0, 0, 11, 0, 2 * Math.PI);
+  ctx.fillStyle = '#0f172a';
   ctx.fill();
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#06b6d4';
+  ctx.lineWidth = 2.5;
   ctx.stroke();
 
   // Left & Right Wheels
-  ctx.fillStyle = '#0f172a';
-  ctx.fillRect(-7, -16, 14, 4);
-  ctx.fillRect(-7, 12, 14, 4);
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(-6, -14, 12, 3);
+  ctx.fillRect(-6, 11, 12, 3);
 
   // Forward Heading Pointer (LiDAR angle arrow)
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  ctx.lineTo(24, 0);
+  ctx.lineTo(20, 0);
   ctx.strokeStyle = '#00f0ff';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 2.5;
   ctx.stroke();
 
   // Arrowhead
   ctx.beginPath();
-  ctx.moveTo(24, 0);
-  ctx.lineTo(16, -6);
-  ctx.lineTo(16, 6);
+  ctx.moveTo(20, 0);
+  ctx.lineTo(13, -5);
+  ctx.lineTo(13, 5);
   ctx.closePath();
   ctx.fillStyle = '#00f0ff';
   ctx.fill();
 
-  // Center YDLIDAR Turret with illuminated core
+  // Center YDLIDAR Turret with illuminated ruby diode core
   ctx.beginPath();
-  ctx.arc(0, 0, 5, 0, 2 * Math.PI);
+  ctx.arc(0, 0, 4, 0, 2 * Math.PI);
   ctx.fillStyle = '#f43f5e';
   ctx.shadowColor = '#f43f5e';
-  ctx.shadowBlur = 8;
+  ctx.shadowBlur = 6;
   ctx.fill();
   
   ctx.restore();
