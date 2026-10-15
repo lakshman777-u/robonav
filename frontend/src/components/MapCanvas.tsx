@@ -4,7 +4,7 @@ import { useRobotStatus } from '../hooks/useRobotStatus';
 import { useCarTrim } from '../context/CarTrimContext';
 import { 
   drawGrid, drawRobot, drawDestination, drawRoomFlags, drawPath, 
-  canvasToWorld, drawLidarScanRays, drawMetricGuides,
+  canvasToWorld, drawLiveLidarHits, drawMetricGuides,
   drawTrajectoryTrail
 } from '../utils/mapRenderer';
 import { createDestination } from '../services/api';
@@ -20,7 +20,6 @@ interface MapCanvasProps {
 export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlagPlacement }: MapCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animPoseRef = useRef({ x: 0.0, y: 0.0, heading: 0.0, initialized: false });
-  const sweepAngleRef = useRef(0.0);
   const { 
     scale, offset, handleWheel, handleMouseDown, 
     handleMouseMove, handleMouseUp, resetView, 
@@ -137,18 +136,14 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
         drawTrajectoryTrail(ctx, curRobot.trajectory, curScale, curOffset);
       }
 
-      // Advance active LiDAR reading angle sweep continuously at ~15 Hz
-      sweepAngleRef.current = (sweepAngleRef.current + 5.5) % 360;
-
-      // 4. Draw active sweeping LiDAR laser reading beam & radar cone
-      // (The 2D walls stay 100% still, while the laser dynamically sweeps its reading angle!)
+      // 4. Draw Live LiDAR bounce-backed reflection dots for the current frame
+      // When the robot moves from Point A to Point B, the dots shift continuously and never remain behind!
       if (curSensor?.lidar?.rays && curSensor.lidar.rays.length > 0) {
-        drawLidarScanRays(
+        drawLiveLidarHits(
           ctx, 
           smoothX, 
           smoothY, 
           smoothHeading, 
-          sweepAngleRef.current, 
           curSensor.lidar.rays, 
           curScale, 
           curOffset

@@ -224,6 +224,12 @@ last_auto_save: float = 0.0
 def process_lidar_points(points: list, position: dict, orientation: float):
     """Processes live LiDAR scans into 2D SLAM occupancy grid in real-time."""
     global current_map_data, accumulated_updates, last_map_broadcast, last_auto_save
+    from app.services.robot_service import robot_state
+
+    # Only accumulate permanent walls into the SLAM map when actively in MAPPING state
+    if robot_state.state != "MAPPING":
+        return
+
     if not current_map_data:
         current_map_data = {
             "name": "Building Map",
@@ -264,7 +270,7 @@ def process_lidar_points(points: list, position: dict, orientation: float):
         cos_a = math.cos(rad)
         sin_a = math.sin(rad)
 
-        # 1. Ray trace free space in master grid (for ROS saving & navigation)
+        # 1. Ray trace free space in master grid (clears false obstacle dots when moved)
         curr = 0.0
         while curr < dist - res:
             curr += res
@@ -273,7 +279,7 @@ def process_lidar_points(points: list, position: dict, orientation: float):
             fx = int((curr_x - origin_x) / res)
             fy = int((curr_y - origin_y) / res)
             if 0 <= fx < width and 0 <= fy < height:
-                if grid[fy][fx] == -1:
+                if grid[fy][fx] != 0:
                     grid[fy][fx] = 0
                     accumulated_updates[fy * width + fx] = 0
 

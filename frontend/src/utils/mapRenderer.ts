@@ -185,80 +185,69 @@ export const drawGrid = (
   ctx.strokeRect(offset.x, offset.y, totalW, totalH);
 };
 
-// Draw Live LiDAR Active Laser Reading Beam and Sweeping Radar Sector
-// (The 2D walls stay 100% still, while the laser dynamically changes its reading angle!)
+// Draw Live LiDAR Scan Reflection Dots (Bounce-Backed Area) for the CURRENT frame only.
+// When the robot moves from Point A to Point B, (robotX, robotY) updates,
+// so the dots continuously shift to the new points and NEVER remain behind.
+// The SLAM map itself only contains the stationary slim blue walls and white floor.
+export const drawLiveLidarHits = (
+  ctx: CanvasRenderingContext2D,
+  robotX: number,
+  robotY: number,
+  robotHeading: number,
+  rays: { angle: number; distance: number }[],
+  scale: number,
+  offset: { x: number; y: number }
+) => {
+  if (!rays || rays.length === 0) return;
+
+  const rPos = worldToCanvas(robotX, robotY, scale, offset.x, offset.y);
+
+  ctx.save();
+  // 1. Subtle, faint scan reflection lines from robot to bounce points
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+  ctx.lineWidth = 0.6;
+
+  // 2. Crisp bright cyan-blue bounce-backed dots
+  ctx.fillStyle = '#38bdf8';
+
+  for (let i = 0; i < rays.length; i++) {
+    const ray = rays[i];
+    if (ray.distance < 0.15 || ray.distance > 8.0) continue;
+
+    // Angle in world space: robotHeading + ray.angle
+    const rad = ((robotHeading + ray.angle) * Math.PI) / 180;
+    const wx = robotX + ray.distance * Math.cos(rad);
+    const wy = robotY + ray.distance * Math.sin(rad);
+
+    const hitPos = worldToCanvas(wx, wy, scale, offset.x, offset.y);
+
+    // Faint laser ray
+    ctx.beginPath();
+    ctx.moveTo(rPos.x, rPos.y);
+    ctx.lineTo(hitPos.x, hitPos.y);
+    ctx.stroke();
+
+    // Crisp bounce-back reflection dot (2px)
+    ctx.beginPath();
+    ctx.arc(hitPos.x, hitPos.y, 2.0, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+
+  ctx.restore();
+};
+
 export const drawLidarScanRays = (
   ctx: CanvasRenderingContext2D,
   robotX: number,
   robotY: number,
   robotHeading: number,
-  sweepAngleDeg: number,
+  _sweepAngleDeg: number,
   rays: { angle: number; distance: number }[],
   scale: number,
   offset: { x: number; y: number }
 ) => {
-  const rPos = worldToCanvas(robotX, robotY, scale, offset.x, offset.y);
-  const sweepRad = (sweepAngleDeg * Math.PI) / 180;
-
-  // 1. Find the obstacle distance at the current reading angle
-  let hitDist = 4.5;
-  if (rays && rays.length > 0) {
-    const relAngle = (((sweepAngleDeg - robotHeading) % 360) + 360) % 360;
-    let closestRay = rays[0];
-    let minDiff = 360;
-    for (let i = 0; i < rays.length; i++) {
-      const diff = Math.abs(rays[i].angle - relAngle);
-      const cyclicDiff = Math.min(diff, 360 - diff);
-      if (cyclicDiff < minDiff && rays[i].distance >= 0.12) {
-        minDiff = cyclicDiff;
-        closestRay = rays[i];
-      }
-    }
-    if (closestRay && closestRay.distance >= 0.12 && closestRay.distance <= 8.0) {
-      hitDist = closestRay.distance;
-    }
-  }
-
-  // Contact coordinate on the stationary wall in world coordinates
-  const wx = robotX + hitDist * Math.cos(sweepRad);
-  const wy = robotY + hitDist * Math.sin(sweepRad);
-  const hitPos = worldToCanvas(wx, wy, scale, offset.x, offset.y);
-
-  ctx.save();
-
-  // 2. Trailing Sweep Fan Cone (30-degree active reading angle radar sector)
-  const coneRad = (30 * Math.PI) / 180;
-  const beamDistPx = Math.hypot(hitPos.x - rPos.x, hitPos.y - rPos.y);
-  const sweepGrad = ctx.createRadialGradient(rPos.x, rPos.y, 2, rPos.x, rPos.y, beamDistPx);
-  sweepGrad.addColorStop(0, 'rgba(6, 182, 212, 0.35)');
-  sweepGrad.addColorStop(0.7, 'rgba(6, 182, 212, 0.10)');
-  sweepGrad.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
-
-  ctx.beginPath();
-  ctx.moveTo(rPos.x, rPos.y);
-  ctx.arc(rPos.x, rPos.y, beamDistPx, sweepRad - coneRad, sweepRad);
-  ctx.closePath();
-  ctx.fillStyle = sweepGrad;
-  ctx.fill();
-
-  // 3. Crisp Active Laser Reading Ray (Luminous cyan #00f0ff pointing to the stationary blue wall)
-  ctx.beginPath();
-  ctx.moveTo(rPos.x, rPos.y);
-  ctx.lineTo(hitPos.x, hitPos.y);
-  ctx.strokeStyle = '#00f0ff';
-  ctx.lineWidth = 1.8;
-  ctx.shadowColor = '#00f0ff';
-  ctx.shadowBlur = 6;
-  ctx.stroke();
-
-  // 4. Subtle wall contact glow where the laser strikes the stationary wall
-  ctx.beginPath();
-  ctx.arc(hitPos.x, hitPos.y, 2.5, 0, Math.PI * 2);
-  ctx.fillStyle = '#00f0ff';
-  ctx.shadowBlur = 8;
-  ctx.fill();
-
-  ctx.restore();
+  // Delegate to live bounce-backed reflection dots shifting with robot position
+  drawLiveLidarHits(ctx, robotX, robotY, robotHeading, rays, scale, offset);
 };
 
 // Draw Robot Chassis / LiDAR Puck, Turret, and Active LiDAR Heading Angle (Matching user image)
