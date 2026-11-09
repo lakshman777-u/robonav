@@ -11,12 +11,16 @@ import { NavigationPanel } from '../components/NavigationPanel';
 import { WaitingTimer } from '../components/WaitingTimer';
 import { UserVideoGuide } from '../components/UserVideoGuide';
 import { LidarSignalsHUD } from '../components/LidarSignalsHUD';
+import { DirectionalRobotEyes } from '../components/DirectionalRobotEyes';
+import { useRobotStatus } from '../hooks/useRobotStatus';
 import { LogOut, Video, X, Cpu } from 'lucide-react';
 
 export const UserDashboard = () => {
   const { logout } = useAuth();
   const { config } = useCarTrim();
+  const { robotStatus } = useRobotStatus();
   const [showVideoModal, setShowVideoModal] = useState(false);
+
 
   return (
     <div className="h-screen flex flex-col text-slate-100 overflow-hidden relative">
@@ -93,6 +97,19 @@ export const UserDashboard = () => {
           {/* Right Column: Destination Dispatch & Status */}
           <div className="w-full lg:w-84 flex flex-col gap-4 overflow-y-auto pr-1 pb-4">
             <RobotStatus />
+
+            {/* Synchronized Directional AI Robot Eyes */}
+            <div className="glass-panel p-3 rounded-2xl border border-white/10 flex flex-col items-center justify-center">
+              <DirectionalRobotEyes
+                expression={robotStatus?.oled_expression || 'HAPPY'}
+                direction={robotStatus?.direction || 'STOPPED'}
+                speedMode={robotStatus?.speed_control?.mode || 'TURTLE'}
+                size="sm"
+                showLabel={true}
+                showOledBezel={true}
+              />
+            </div>
+
             <NavigationPanel />
             <WaitingTimer />
             <DestinationList />

@@ -54,18 +54,18 @@ controller_server:
       debug_trajectory_details: False
       min_vel_x: 0.0
       min_vel_y: 0.0
-      max_vel_x: 0.35
+      max_vel_x: 0.12
       max_vel_y: 0.0
-      max_vel_theta: 1.0
+      max_vel_theta: 0.60
       min_speed_xy: 0.0
-      max_speed_xy: 0.35
+      max_speed_xy: 0.12
       min_speed_theta: 0.0
-      acc_lim_x: 1.0
+      acc_lim_x: 0.25
       acc_lim_y: 0.0
-      acc_lim_theta: 2.0
-      decel_lim_x: -1.0
+      acc_lim_theta: 0.60
+      decel_lim_x: -0.30
       decel_lim_y: 0.0
-      decel_lim_theta: -2.0
+      decel_lim_theta: -0.80
       vx_samples: 15
       vtheta_samples: 20
       sim_time: 1.5

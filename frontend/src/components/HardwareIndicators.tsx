@@ -45,8 +45,8 @@ export const HardwareIndicators = () => {
       color: (isOnline && robotStatus?.state !== 'EMERGENCY_STOP') ? 'text-purple-400 bg-purple-500/10 border-purple-500/30' : 'text-red-400 bg-red-500/10 border-red-500/30'
     },
     {
-      label: 'ULTRASONIC x2',
-      status: isOnline ? 'ACTIVE' : 'OFFLINE',
+      label: 'MPU9250 9-AXIS',
+      status: isOnline ? 'ACTIVE (VCC EAST)' : 'OFFLINE',
       active: isOnline,
       icon: Radio,
       color: isOnline ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' : 'text-gray-400 bg-gray-500/10 border-gray-500/30'

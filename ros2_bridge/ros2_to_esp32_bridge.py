@@ -21,6 +21,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, TransformStamped, PoseStamped
 from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Range
 from tf2_ros import TransformBroadcaster
 
 # Try importing TwistStamped for ROS 2 distributions using stamped cmd_vel
@@ -31,17 +32,17 @@ except ImportError:
     HAS_TWIST_STAMPED = False
 
 # ==============================================================================
-# DIFFERENTIAL DRIVE ROBOT CALIBRATION CONSTANTS
+# DIFFERENTIAL DRIVE ROBOT CALIBRATION CONSTANTS (TURTLE MODE DEFAULT)
 # ==============================================================================
 WHEEL_SEPARATION = 0.160   # meters (track width between left & right wheels)
 WHEEL_RADIUS     = 0.033   # meters (standard 65mm robot wheel)
-MAX_LINEAR_VEL   = 0.40    # m/s
-MAX_ANGULAR_VEL  = 1.50    # rad/s
+MAX_LINEAR_VEL   = 0.12    # m/s (TURTLE MODE safe slow speed)
+MAX_ANGULAR_VEL  = 0.60    # rad/s
 
 # PWM Calibration mapping:
-# 0.40 m/s corresponds to 255 PWM; deadband minimum is 60 PWM
+# Gentle slow-motion motor PWM limits
 PWM_MIN = 60
-PWM_MAX = 255
+PWM_MAX = 110
 
 BACKEND_COMMAND_URL = "http://127.0.0.1:8000/api/robot/command"
 BACKEND_DEVICE_KEY  = "rb_live_Quwl_PxT5rgl8I-IGQquU2JaKSuQDPMq"
@@ -70,7 +71,6 @@ class Ros2ToEsp32Bridge(Node):
             except Exception:
                 pass
 
-
         # 2. Odometry Publisher & TF Broadcaster
         self.odom_pub = self.create_publisher(Odometry, "/odom", 10)
         self.tf_broadcaster = TransformBroadcaster(self)
@@ -79,6 +79,10 @@ class Ros2ToEsp32Bridge(Node):
         self.goal_pub = self.create_publisher(PoseStamped, "/goal_pose", 10)
         self.last_goal_ts = ""
         self.current_target = None
+
+        # 4. Front Ultrasonic Range Publisher
+        self.range_pub = self.create_publisher(Range, "/ultrasonic/range", 10)
+        self.create_timer(0.10, self.poll_and_publish_ultrasonic)
 
         # Current Robot Pose for Open-Loop Odometry
         self.x = 0.0
@@ -98,15 +102,19 @@ class Ros2ToEsp32Bridge(Node):
         self.last_cmd_send_time = 0.0
         self.pending_left_pwm = 0
         self.pending_right_pwm = 0
+        self.pending_direction = "STOPPED"
+        self.pending_eye_expression = "HAPPY"
         self.cmd_lock = threading.Lock()
 
         # Background worker for dispatching commands to FastAPI
         self.worker_thread = threading.Thread(target=self._dispatch_worker, daemon=True)
         self.worker_thread.start()
 
-        self.get_logger().info("ROS 2 to ESP32 Differential Drive Bridge INITIALIZED.")
-        self.get_logger().info(f"Subscribing: /cmd_vel -> Differential Drive (Track: {WHEEL_SEPARATION}m)")
+        self.get_logger().info("ROS 2 to ESP32 Differential Drive Bridge INITIALIZED in TURTLE MODE.")
+        self.get_logger().info(f"Subscribing: /cmd_vel (Max: {MAX_LINEAR_VEL} m/s) -> Differential Drive (Track: {WHEEL_SEPARATION}m)")
+        self.get_logger().info("Ultrasonic: Publishing /ultrasonic/range at 10 Hz")
         self.get_logger().info("Nav2 Goal Dispatcher: Listening for goals from Web Dashboard on /goal_pose")
+
 
     def on_twist_received(self, msg: Twist):
         self.process_velocity(msg.linear.x, msg.angular.z)
@@ -132,9 +140,41 @@ class Ros2ToEsp32Bridge(Node):
         pwm_left = self._vel_to_pwm(v_left)
         pwm_right = self._vel_to_pwm(v_right)
 
+        # Determine motion direction and OLED eye expression
+        direction = "STOPPED"
+        eye_expression = "HAPPY"
+        if abs(linear_x) < 0.01 and abs(angular_z) < 0.05:
+            direction = "STOPPED"
+            eye_expression = "HAPPY"
+        elif abs(linear_x) >= 0.02 and abs(angular_z) < 0.15:
+            if linear_x > 0:
+                direction = "FORWARD"
+                eye_expression = "MOVING FORWARD"
+            else:
+                direction = "REVERSE"
+                eye_expression = "LOOKING BACK"
+        elif angular_z > 0.40:
+            direction = "U_TURN_LEFT"
+            eye_expression = "U-TURN LEFT"
+        elif angular_z < -0.40:
+            direction = "U_TURN_RIGHT"
+            eye_expression = "U-TURN RIGHT"
+        elif angular_z > 0.10:
+            direction = "TURN_LEFT"
+            eye_expression = "TURNING LEFT"
+        elif angular_z < -0.10:
+            direction = "TURN_RIGHT"
+            eye_expression = "TURNING RIGHT"
+        else:
+            direction = "FORWARD"
+            eye_expression = "MOVING FORWARD"
+
         with self.cmd_lock:
             self.pending_left_pwm = pwm_left
             self.pending_right_pwm = pwm_right
+            self.pending_direction = direction
+            self.pending_eye_expression = eye_expression
+
 
     def _vel_to_pwm(self, vel_m_s: float) -> int:
         if abs(vel_m_s) < 0.01:
@@ -208,28 +248,49 @@ class Ros2ToEsp32Bridge(Node):
                 except Exception:
                     pass
 
+    def poll_and_publish_ultrasonic(self):
+        try:
+            req = url_request.Request("http://127.0.0.1:8000/api/sensors/ultrasonic")
+            with url_request.urlopen(req, timeout=0.2) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                dist_m = float(data.get("distance_m", 1.25))
+
+                msg = Range()
+                msg.header.stamp = self.get_clock().now().to_msg()
+                msg.header.frame_id = "base_link"
+                msg.radiation_type = Range.ULTRASOUND
+                msg.field_of_view = 0.26  # ~15 degrees
+                msg.min_range = 0.02
+                msg.max_range = 4.00
+                msg.range = dist_m
+                self.range_pub.publish(msg)
+        except Exception:
+            pass
+
     def check_navigation_goal(self):
         try:
             req = url_request.Request(
-                "http://127.0.0.1:8000/api/navigation/goal",
+                "http://127.0.0.1:8000/api/navigation/active-goal",
                 headers={"Content-Type": "application/json"}
             )
             with url_request.urlopen(req, timeout=0.5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                goal = data.get("goal")
-                if goal and goal.get("timestamp") != self.last_goal_ts:
-                    self.last_goal_ts = goal.get("timestamp")
-                    self.current_target = goal
-                    self.get_logger().info(f"Nav2 Goal Received from Web: {goal.get('name')} at ({goal.get('x')}, {goal.get('y')})")
+                if data.get("active") and data.get("target"):
+                    target = data.get("target")
+                    ts = str(data.get("timestamp", ""))
+                    if ts != self.last_goal_ts:
+                        self.last_goal_ts = ts
+                        self.current_target = target
+                        self.get_logger().info(f"Nav2 Goal Received from Web: {target.get('name')} at ({target.get('x')}, {target.get('y')})")
 
-                    msg = PoseStamped()
-                    msg.header.stamp = self.get_clock().now().to_msg()
-                    msg.header.frame_id = "map"
-                    msg.pose.position.x = float(goal["x"])
-                    msg.pose.position.y = float(goal["y"])
-                    msg.pose.position.z = 0.0
-                    msg.pose.orientation.w = 1.0
-                    self.goal_pub.publish(msg)
+                        msg = PoseStamped()
+                        msg.header.stamp = self.get_clock().now().to_msg()
+                        msg.header.frame_id = "map"
+                        msg.pose.position.x = float(target["x"])
+                        msg.pose.position.y = float(target["y"])
+                        msg.pose.position.z = 0.0
+                        msg.pose.orientation.w = 1.0
+                        self.goal_pub.publish(msg)
         except Exception:
             pass
 
@@ -237,17 +298,25 @@ class Ros2ToEsp32Bridge(Node):
         while rclpy.ok():
             left = 0
             right = 0
+            direction = "STOPPED"
+            eye_expression = "HAPPY"
             with self.cmd_lock:
                 left = self.pending_left_pwm
                 right = self.pending_right_pwm
+                direction = self.pending_direction
+                eye_expression = self.pending_eye_expression
 
             # Send SET_WHEEL_SPEEDS command to FastAPI backend
             payload = {
                 "command": "SET_WHEEL_SPEEDS",
                 "speed": max(abs(left), abs(right)) / 255.0,
+                "speed_mode": "TURTLE",
+                "direction": direction,
+                "oled_expression": eye_expression,
                 "parameters": {
                     "left": left,
-                    "right": right
+                    "right": right,
+                    "direction": direction
                 }
             }
 

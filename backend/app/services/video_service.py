@@ -207,11 +207,39 @@ class VideoService:
         header += b'\xff\xda\x00\x08\x01\x01\x00\x00\x3f\x00\x7f\x00\xff\xd9'
         return bytes(header)
 
+    def generate_offline_frame(self) -> bytes:
+        """Generates a crisp standby test frame when waiting for ESP32-CAM frames."""
+        width, height = 640, 480
+        if HAVE_CV2:
+            frame = np.zeros((height, width, 3), dtype=np.uint8)
+            frame[:] = [14, 12, 22]
+            cv2.rectangle(frame, (10, 10), (width - 10, height - 10), (35, 40, 60), 1)
+            cv2.rectangle(frame, (80, 120), (width - 80, 360), (22, 20, 32), -1)
+            cv2.rectangle(frame, (80, 120), (width - 80, 360), (0, 200, 255), 2)
+            cv2.putText(frame, "ROBONAV ESP32-CAM (OV2640)", (120, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 240, 255), 2)
+            cv2.putText(frame, "AWAITING LIVE VIDEO STREAM", (160, 225), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (220, 220, 240), 1)
+            cv2.putText(frame, "Connect ESP32-S3 Camera to Wi-Fi", (170, 265), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 160, 180), 1)
+            cv2.putText(frame, "Proxy: /api/robot/video | Onboard: http://<ESP32_IP>/stream", (95, 305), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 120), 1)
+            ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+            cv2.putText(frame, f"SYSTEM TIME: {ts}", (20, height - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 150, 200), 1)
+            _, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+            return jpeg.tobytes()
+        elif HAVE_PIL:
+            img = Image.new('RGB', (width, height), color=(14, 12, 22))
+            draw = ImageDraw.Draw(img)
+            draw.text((120, 180), "ROBONAV ESP32-CAM (OV2640)", fill=(0, 240, 255))
+            draw.text((160, 225), "AWAITING LIVE VIDEO STREAM", fill=(220, 220, 240))
+            buf = io.BytesIO()
+            img.save(buf, format='JPEG')
+            return buf.getvalue()
+        else:
+            return self._make_fallback_jpeg(width, height)
+
     async def mjpeg_frame_generator(self):
         """Yields multipart/x-mixed-replace MJPEG stream frames."""
         while True:
             now = time.time()
-            if self.is_real_robot_connected and self.latest_frame and (now - self.latest_frame_time < 3.0):
+            if self.latest_frame and (now - self.latest_frame_time < 4.0):
                 frame_data = self.latest_frame
             elif self.simulation_mode:
                 frame_data = self.generate_simulated_frame()

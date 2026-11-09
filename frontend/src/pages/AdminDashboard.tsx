@@ -24,6 +24,12 @@ import { VideoTutorials } from './VideoTutorials';
 import { PaganiSimulatorGame } from './PaganiSimulatorGame';
 import { SystemLog } from '../components/SystemLog';
 import { LidarSignalsHUD } from '../components/LidarSignalsHUD';
+import { RobotLiveCamera } from './RobotLiveCamera';
+import { LiveRobotTracking } from './LiveRobotTracking';
+import { RobotSensorMonitor } from './RobotSensorMonitor';
+import { HardwareConfigPanel } from '../components/HardwareConfigPanel';
+import { Camera, Compass, Activity, Sliders } from 'lucide-react';
+
 
 const SidebarLink = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => {
   const location = useLocation();
@@ -158,6 +164,10 @@ export const AdminDashboard = () => {
 
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
           <SidebarLink to="/admin" icon={LayoutDashboard} label="Cockpit Dashboard" />
+          <SidebarLink to="/admin/live-camera" icon={Camera} label="Robot Live Camera" />
+          <SidebarLink to="/admin/tracking" icon={Compass} label="Live Robot Tracking" />
+          <SidebarLink to="/admin/sensor-monitor" icon={Activity} label="Sensor Monitor (MPU9250)" />
+          <SidebarLink to="/admin/hardware" icon={Sliders} label="Hardware Config (ESP32-S3)" />
           <SidebarLink to="/admin/simulator-game" icon={Gamepad2} label="🎮 House Simulator (3 Trims)" />
           <SidebarLink to="/admin/map" icon={MapIcon} label="2D Live Map" />
           <SidebarLink to="/admin/mapping" icon={Scan} label="Live 2D Mapping" />
@@ -281,6 +291,10 @@ export const AdminDashboard = () => {
         <div className="flex-1 p-6 overflow-auto">
           <Routes>
             <Route path="/" element={<DashboardHome />} />
+            <Route path="/live-camera" element={<RobotLiveCamera />} />
+            <Route path="/tracking" element={<LiveRobotTracking />} />
+            <Route path="/sensor-monitor" element={<RobotSensorMonitor />} />
+            <Route path="/hardware" element={<HardwareConfigPanel />} />
             <Route path="/simulator-game" element={<PaganiSimulatorGame />} />
             <Route path="/map" element={<div className="h-[calc(100vh-8rem)] rounded-2xl overflow-hidden glass-panel border border-white/10"><MapCanvas /></div>} />
             <Route path="/mapping" element={<Mapping />} />

@@ -29,7 +29,14 @@ export const useKeyboard = (onCommand: (cmd: string) => void, enabled: boolean) 
         cmd = 'TURN_RIGHT';
       } else if (e.key === ' ') {
         cmd = 'STOP';
+      } else if (key === 'e') {
+        cmd = 'EMERGENCY_STOP';
+      } else if (key === '+' || key === '=') {
+        cmd = 'INCREASE_SPEED';
+      } else if (key === '-' || key === '_') {
+        cmd = 'DECREASE_SPEED';
       }
+
 
       if (cmd) {
         activeKeyRef.current = key;

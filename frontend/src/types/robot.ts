@@ -42,11 +42,20 @@ export interface RobotStatus {
   navigation_progress: number;
   distance_remaining: number;
   estimated_time_remaining: number;
+  ip?: string;
   last_heartbeat?: string;
   hardware?: HardwareStatus;
   bridge?: BridgeMetrics;
   trajectory?: Array<{ x: number; y: number }>;
   oled_expression?: string;
+  direction?: string;
+  speed_control?: any;
+  mpu9250?: any;
+  ultrasonic?: any;
+  camera?: any;
+  navigation_status?: string;
+  hardware_config?: any;
+  wifi?: string;
   motors?: {
     state: string;
     left_speed: number;

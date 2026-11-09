@@ -9,12 +9,27 @@ export const LiveCamera = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [currentTime, setCurrentTime] = useState<string>('');
   const [streamError, setStreamError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  const [streamSource, setStreamSource] = useState<'proxy' | 'direct'>('proxy');
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  const robotIp = robotStatus?.ip || '';
+
+  // Auto-reconnect stream if an error occurs
+  useEffect(() => {
+    if (streamError) {
+      const timer = setTimeout(() => {
+        setStreamError(false);
+        setRetryKey(k => k + 1);
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [streamError]);
+
   // Determine if stream is truly active
   const isOnline = robotStatus?.connection_status === 'ONLINE' || simulationMode;
-  const isStreaming = isOnline && (robotStatus?.hardware?.camera !== 'OFFLINE');
+  const isStreaming = true; // Stream generator provides live or standby frames
   const fps = sensorData?.camera?.fps || (isStreaming ? (simulationMode ? 24 : 15) : 0);
   const resolution = sensorData?.camera?.resolution || '640x480 (VGA)';
 
@@ -165,6 +180,23 @@ export const LiveCamera = () => {
 
         {/* Telemetry Chips (FPS, Res, Time, Fullscreen) */}
         <div className="flex items-center gap-2 text-[10px] font-mono">
+          {robotIp && (
+            <button
+              onClick={() => {
+                setStreamSource(s => s === 'proxy' ? 'direct' : 'proxy');
+                setStreamError(false);
+                setRetryKey(k => k + 1);
+              }}
+              className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
+                streamSource === 'direct'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                  : 'bg-white/5 text-gray-400 border border-white/10 hover:text-white'
+              }`}
+              title={streamSource === 'direct' ? 'Streaming directly from ESP32 IP' : 'Streaming proxied via laptop backend'}
+            >
+              {streamSource === 'direct' ? `ESP32 (${robotIp})` : 'PROXY'}
+            </button>
+          )}
           <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-gray-300">
             {fps} FPS
           </span>
@@ -186,32 +218,61 @@ export const LiveCamera = () => {
 
       {/* Video Content Canvas / Stream View */}
       <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
-        {isStreaming ? (
+        {/* Real Video Stream from PC MJPEG Endpoint or Direct ESP32 Stream */}
+        {!simulationMode ? (
           <>
-            {/* Real Video Stream from PC MJPEG Endpoint */}
-            {!simulationMode ? (
-              <img
-                src="/api/robot/video"
-                alt="ESP32-CAM Live Stream"
-                className="w-full h-full object-cover"
-                onError={() => setStreamError(true)}
-              />
-            ) : (
-              /* Simulated POV Canvas in Simulation Mode */
-              <canvas
-                ref={canvasRef}
-                width={640}
-                height={480}
-                className="w-full h-full object-cover"
-              />
-            )}
+            <img
+              key={`stream-${retryKey}-${streamSource}`}
+              src={streamSource === 'direct' && robotIp ? `http://${robotIp}:80/stream` : `/api/robot/video?_t=${retryKey}`}
+              alt="ESP32-CAM Live Stream"
+              className="w-full h-full object-cover"
+              onError={() => setStreamError(true)}
+            />
 
-            {/* In-Video HUD Overlays */}
-            <div className="absolute top-3 left-3 pointer-events-none flex flex-col gap-1.5 z-10">
-              <div className="px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-[10px] font-mono text-white flex items-center gap-2">
-                <Radio size={12} className="text-green-400 animate-pulse" />
-                <span>LINK: {simulationMode ? 'SIMULATED CAMERA' : 'ESP32-CAM (OV2640)'}</span>
+            {streamError && (
+              <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-center space-y-3 z-30">
+                <VideoOff size={32} className="text-amber-400 animate-pulse" />
+                <span className="text-xs font-mono font-bold text-white tracking-wide">CONNECTING TO CAMERA STREAM...</span>
+                <span className="text-[10px] font-mono text-gray-400">Reconnecting automatically...</span>
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={() => { setStreamError(false); setRetryKey(k => k + 1); }}
+                    className="px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-mono text-xs font-bold transition-all shadow-lg active:scale-95"
+                  >
+                    Retry Now
+                  </button>
+                  {robotIp && (
+                    <button
+                      onClick={() => {
+                        setStreamSource(s => s === 'proxy' ? 'direct' : 'proxy');
+                        setStreamError(false);
+                        setRetryKey(k => k + 1);
+                      }}
+                      className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 font-mono text-xs font-bold transition-all active:scale-95"
+                    >
+                      Try {streamSource === 'proxy' ? 'Direct ESP32' : 'Backend Proxy'}
+                    </button>
+                  )}
+                </div>
               </div>
+            )}
+          </>
+        ) : (
+          /* Simulated POV Canvas in Simulation Mode */
+          <canvas
+            ref={canvasRef}
+            width={640}
+            height={480}
+            className="w-full h-full object-cover"
+          />
+        )}
+
+        {/* In-Video HUD Overlays */}
+        <div className="absolute top-3 left-3 pointer-events-none flex flex-col gap-1.5 z-10">
+          <div className="px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-[10px] font-mono text-white flex items-center gap-2">
+            <Radio size={12} className="text-green-400 animate-pulse" />
+            <span>LINK: {simulationMode ? 'SIMULATED POV' : (streamSource === 'direct' ? `ESP32 DIRECT (${robotIp})` : 'ESP32-CAM (OV2640)')}</span>
+          </div>
 
               {sensorData?.camera?.obstacle_detected && (
                 <div className="px-2.5 py-1 rounded-lg bg-red-950/80 backdrop-blur-md border border-red-500 text-[10px] font-mono text-red-300 flex items-center gap-2 animate-bounce">
@@ -230,26 +291,6 @@ export const LiveCamera = () => {
                 θ: {(robotStatus?.orientation || 0).toFixed(1)}°
               </div>
             </div>
-          </>
-        ) : (
-          /* Authentic NO SIGNAL / OFFLINE Screen when ESP32-CAM Disconnected (Requirement #57) */
-          <div className="flex flex-col items-center justify-center p-6 text-center space-y-3 z-10">
-            <div className="w-14 h-14 rounded-full bg-red-950/40 border border-red-500/40 flex items-center justify-center text-red-400">
-              <VideoOff size={28} />
-            </div>
-            <div>
-              <div className="text-sm font-black font-mono tracking-widest text-red-400">
-                NO VIDEO SIGNAL
-              </div>
-              <div className="text-xs text-gray-300 font-mono mt-1">
-                ESP32-CAM IS CURRENTLY OFFLINE
-              </div>
-            </div>
-            <p className="text-[11px] text-gray-500 max-w-xs font-mono">
-              Connect your ESP32-CAM to Wi-Fi with the generated API key, or switch to SIMULATION MODE in settings.
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );

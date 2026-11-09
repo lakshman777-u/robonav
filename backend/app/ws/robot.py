@@ -41,7 +41,7 @@ async def robot_websocket_endpoint(websocket: WebSocket, token: str = ""):
                 "websocket": "CONNECTED",
                 "camera": "STREAMING",
                 "lidar": "ACTIVE",
-                "ultrasonic": "ACTIVE",
+                "ultrasonic": "REMOVED",
                 "motor_controller": "READY"
             }
         }
@@ -72,6 +72,38 @@ async def robot_websocket_endpoint(websocket: WebSocket, token: str = ""):
                 us_data = t_data.get("ultrasonic", {"front": 1.25, "side": 2.10, "status": "CLEAR"})
                 mot_data = t_data.get("motors", {"state": "STOPPED", "left_speed": 0, "right_speed": 0})
 
+                from app.api.robot import mpu9250_data, ultrasonic_data, speed_control_state, wifi_config_state
+                if "mpu9250" in t_data:
+                    mpu9250_data.update(t_data["mpu9250"])
+                if "imu" in t_data:
+                    mpu9250_data.update(t_data["imu"])
+                if "ultrasonic" in t_data:
+                    us_in = t_data["ultrasonic"]
+                    if isinstance(us_in, dict):
+                        ultrasonic_data.update(us_in)
+                    elif isinstance(us_in, (int, float)):
+                        ultrasonic_data["distance_cm"] = float(us_in)
+                        ultrasonic_data["distance_m"] = round(float(us_in) / 100.0, 3)
+                if "speed_mode" in t_data:
+                    speed_control_state["mode"] = t_data["speed_mode"]
+                    speed_control_state["boost_active"] = (t_data["speed_mode"] == "BOOST")
+                if "direction" in t_data:
+                    speed_control_state["current_direction"] = t_data["direction"]
+                if oled_expr:
+                    speed_control_state["oled_expression"] = oled_expr
+                if "wifi_rssi" in t_data:
+                    try:
+                        rssi_val = int(t_data["wifi_rssi"])
+                        wifi_config_state["rssi_dbm"] = rssi_val
+                        wifi_config_state["signal_percentage"] = max(0, min(100, 2 * (rssi_val + 100)))
+                    except Exception:
+                        pass
+                if "ip" in t_data:
+                    wifi_config_state["esp32_ip"] = t_data["ip"]
+                wifi_config_state["connected"] = True
+                wifi_config_state["status"] = "CONNECTED"
+
+
                 # Broadcast unified status to browsers
                 await manager.broadcast_to_browsers({
                     "type": "robot_status",
@@ -79,6 +111,10 @@ async def robot_websocket_endpoint(websocket: WebSocket, token: str = ""):
                         **robot_state.to_dict(),
                         "connection_status": "ONLINE",
                         "oled_expression": oled_expr,
+                        "direction": speed_control_state["current_direction"],
+                        "speed_control": speed_control_state,
+                        "mpu9250": mpu9250_data,
+                        "ultrasonic": ultrasonic_data,
                         "motors": mot_data,
                         "hardware": {
                             "pc_server": "ONLINE",
@@ -86,7 +122,7 @@ async def robot_websocket_endpoint(websocket: WebSocket, token: str = ""):
                             "websocket": "CONNECTED",
                             "camera": "STREAMING",
                             "lidar": "ACTIVE",
-                            "ultrasonic": "ACTIVE",
+                            "ultrasonic": "REMOVED",
                             "motor_controller": "READY" if mot_data.get("state") != "EMERGENCY_STOP" else "STOPPED"
                         }
                     }
@@ -102,13 +138,17 @@ async def robot_websocket_endpoint(websocket: WebSocket, token: str = ""):
                 await manager.broadcast_to_browsers({
                     "type": "sensor_data",
                     "data": {
-                        "ultrasonic": us_data,
+                        "ultrasonic": ultrasonic_data,
+                        "mpu9250": mpu9250_data,
+                        "speed_control": speed_control_state,
+                        "direction": speed_control_state["current_direction"],
                         "lidar": t_data.get("lidar", {"active": True, "status": "ACTIVE"}),
                         "oled_expression": oled_expr,
                         "camera": video_service.get_status(),
                         "glass_detected": t_data.get("glass_detected", False)
                     }
                 })
+
                     
             elif msg_type in ["sensor_data", "lidar_scan"]:
                 pts = message.get("points") or message.get("data", {}).get("points")
@@ -148,7 +188,7 @@ def handle_disconnect():
                 "websocket": "DISCONNECTED",
                 "camera": "OFFLINE",
                 "lidar": "INACTIVE",
-                "ultrasonic": "INACTIVE",
+                "ultrasonic": "REMOVED",
                 "motor_controller": "STOPPED"
             }
         }
