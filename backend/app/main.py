@@ -9,7 +9,7 @@ from app.database import init_db
 from app.api import auth, robot, api_keys, mapping, destinations, navigation, telemetry, lidar
 from app.ws import browser, robot as ws_robot
 from app.simulation.robot_simulator import simulator
-from app.security.authentication import require_admin, User
+from app.security.authentication import require_admin, get_optional_user, User
 
 app = FastAPI(title="RoboNav API")
 
@@ -74,6 +74,29 @@ async def toggle_demo_time(req: DemoTime, current_user: User = Depends(require_a
     simulator.demo_mode = req.enabled
     simulator.time_scale = 10.0 if req.enabled else 1.0
     return {"demo_mode": simulator.demo_mode, "time_scale": simulator.time_scale}
+
+@app.post("/api/simulation/tour")
+async def toggle_sim_tour(current_user: Optional[User] = Depends(get_optional_user)):
+    """Toggles or starts the complete continuous autonomous simulation tour."""
+    if not simulator.is_running:
+        await simulator.start()
+    if simulator.tour_active:
+        await simulator.command_queue.put({"type": "STOP_TOUR"})
+        return {"status": "tour_stopped", "tour_active": False}
+    else:
+        await simulator.command_queue.put({"type": "START_TOUR"})
+        return {"status": "tour_started", "tour_active": True}
+
+@app.get("/api/simulation/status")
+async def get_simulation_status():
+    return {
+        "is_running": simulator.is_running,
+        "tour_active": simulator.tour_active,
+        "tour_step": simulator.tour_step,
+        "demo_mode": simulator.demo_mode,
+        "time_scale": simulator.time_scale
+    }
+
 
 # Serve Frontend Static Assets and SPA Routes directly
 import os

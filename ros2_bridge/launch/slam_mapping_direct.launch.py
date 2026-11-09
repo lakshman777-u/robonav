@@ -21,7 +21,9 @@ def generate_launch_description():
     is_mock = ("--mock" in sys.argv or "--demo" in sys.argv)
     lidar_cmd = ["python3", lidar_driver_script, "--mock"] if is_mock else ["python3", lidar_driver_script]
 
-    return LaunchDescription([
+    has_display = bool(os.environ.get("DISPLAY")) and ("--no-rviz" not in sys.argv)
+
+    nodes = [
         # 1. YDLIDAR Direct Driver Node
         ExecuteProcess(
             cmd=lidar_cmd,
@@ -45,15 +47,32 @@ def generate_launch_description():
             parameters=[slam_params_path]
         ),
 
-        # 4. RViz2 Visualizer
+        # 4. Nav2 Lifecycle Manager (Auto-configures and activates SLAM Toolbox)
         Node(
-            package="rviz2",
-            executable="rviz2",
-            name="rviz2",
-            arguments=["-d", rviz_config_path],
-            output="screen"
+            package="nav2_lifecycle_manager",
+            executable="lifecycle_manager",
+            name="lifecycle_manager_slam",
+            output="screen",
+            parameters=[{
+                "autostart": True,
+                "node_names": ["slam_toolbox"]
+            }]
         )
-    ])
+    ]
+
+    # 5. RViz2 Visualizer (launched when DISPLAY is available)
+    if has_display:
+        nodes.append(
+            Node(
+                package="rviz2",
+                executable="rviz2",
+                name="rviz2",
+                arguments=["-d", rviz_config_path],
+                output="screen"
+            )
+        )
+
+    return LaunchDescription(nodes)
 
 if __name__ == "__main__":
     from launch import LaunchService

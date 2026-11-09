@@ -226,3 +226,44 @@ async def delete_map(map_id: int, db: AsyncSession = Depends(get_db), current_us
     await db.commit()
     return {"status": "deleted", "id": map_id}
 
+
+class Ros2MapSyncReq(BaseModel):
+    name: Optional[str] = "ROS 2 SLAM Toolbox Map"
+    width: int
+    height: int
+    resolution: float
+    origin_x: float
+    origin_y: float
+    data: List[int]
+
+
+@router.post("/sync_ros2")
+async def sync_ros2_map(req: Ros2MapSyncReq):
+    """Receives 2D occupancy grid map updates from ROS 2 SLAM Toolbox and syncs with web UI."""
+    from app.ws.manager import manager
+    current_map_data["name"] = req.name
+    current_map_data["width"] = req.width
+    current_map_data["height"] = req.height
+    current_map_data["resolution"] = req.resolution
+    current_map_data["origin_x"] = req.origin_x
+    current_map_data["origin_y"] = req.origin_y
+    grid_2d = [req.data[i * req.width:(i + 1) * req.width] for i in range(req.height)]
+    current_map_data["grid"] = grid_2d
+    current_map_data["real_points_mapped"] = sum(1 for val in req.data if val == 100)
+
+    await manager.broadcast_to_browsers({
+        "type": "map_update",
+        "data": {
+            "occupancy_grid": req.data,
+            "width": req.width,
+            "height": req.height,
+            "resolution": req.resolution,
+            "origin_x": req.origin_x,
+            "origin_y": req.origin_y,
+            "name": req.name,
+            "status": "building"
+        }
+    })
+    return {"status": "synced", "points": current_map_data["real_points_mapped"]}
+
+

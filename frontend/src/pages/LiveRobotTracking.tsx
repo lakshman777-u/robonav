@@ -1,22 +1,47 @@
 import React, { useState, useEffect } from 'react';
-import { Compass, Navigation2, MapPin, Zap, AlertTriangle, ShieldCheck, Flag, Clock, ArrowRight, Gauge } from 'lucide-react';
+import { 
+  Compass, Navigation2, MapPin, Zap, AlertTriangle, ShieldCheck, 
+  Flag, Clock, ArrowRight, Gauge, Play, Square, Scan,
+  ArrowUp, ArrowDown, ArrowLeft, RotateCcw, RotateCw, Pause, Gamepad2
+} from 'lucide-react';
 import { MapCanvas } from '../components/MapCanvas';
 import { DirectionalRobotEyes } from '../components/DirectionalRobotEyes';
 import { useRobotStatus } from '../hooks/useRobotStatus';
 import { useCarTrim } from '../context/CarTrimContext';
+import { toggleSimTour, getSimStatus } from '../services/api';
+import toast from 'react-hot-toast';
 
 export const LiveRobotTracking: React.FC = () => {
-  const { robotStatus, emergencyStop } = useRobotStatus();
+  const { robotStatus, emergencyStop, sendCommand } = useRobotStatus();
   const { config } = useCarTrim();
   const [boostActive, setBoostActive] = useState(false);
   const [selectedDest, setSelectedDest] = useState<string | null>(null);
   const [destinations, setDestinations] = useState<any[]>([]);
+  const [tourActive, setTourActive] = useState(false);
+  const [loadingTour, setLoadingTour] = useState(false);
 
   useEffect(() => {
     if (robotStatus?.speed_control?.boost_active !== undefined) {
       setBoostActive(robotStatus.speed_control.boost_active);
     }
   }, [robotStatus?.speed_control]);
+
+  // Fetch simulation tour status
+  useEffect(() => {
+    const checkSim = async () => {
+      try {
+        const res = await getSimStatus();
+        if (res.data) {
+          setTourActive(Boolean(res.data.tour_active));
+        }
+      } catch (e) {
+        // silent
+      }
+    };
+    checkSim();
+    const interval = setInterval(checkSim, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch 4 destinations
   useEffect(() => {
@@ -35,8 +60,35 @@ export const LiveRobotTracking: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: nextBoost ? 'BOOST' : 'TURTLE' }),
       });
+      toast.success(nextBoost ? '⚡ Boost Mode Enabled' : '🐢 Turtle Slow Mode Active');
     } catch (e) {
       console.error('Failed to toggle speed mode:', e);
+    }
+  };
+
+  const handleToggleTour = async () => {
+    setLoadingTour(true);
+    try {
+      const res = await toggleSimTour();
+      const active = Boolean(res.data?.tour_active);
+      setTourActive(active);
+      if (active) {
+        toast.success('▶ Autonomous Simulation Tour Started across all 5 rooms!', { icon: '🚀' });
+      } else {
+        toast('⏹ Autonomous Tour Stopped', { icon: '⏹' });
+      }
+    } catch (e) {
+      toast.error('Failed to toggle tour simulation');
+    } finally {
+      setLoadingTour(false);
+    }
+  };
+
+  const handleConduct = async (cmd: string) => {
+    try {
+      await sendCommand(cmd, { speed: boostActive ? 0.35 : 0.12 });
+    } catch (e) {
+      console.error('Failed to conduct robot:', e);
     }
   };
 
@@ -53,6 +105,7 @@ export const LiveRobotTracking: React.FC = () => {
           y: dest.y,
         }),
       });
+      toast.success(`Conducting autonomous path to ${dest.name}!`);
     } catch (e) {
       console.error('Failed to dispatch navigation goal:', e);
     }
@@ -94,8 +147,30 @@ export const LiveRobotTracking: React.FC = () => {
           </div>
         </div>
 
-        {/* Speed & Emergency Controls */}
-        <div className="flex items-center gap-3">
+        {/* Conduction, Speed & Simulation Controls */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Live LiDAR Stream Status Badge */}
+          <div className="px-3 py-1.5 rounded-xl bg-cyan-950/60 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-bold flex items-center gap-2 shadow-inner">
+            <Scan size={14} className="text-cyan-400 animate-pulse" />
+            <span>LiDAR: {robotStatus?.lidar?.scan_rate ? robotStatus.lidar.scan_rate.toFixed(1) : (robotStatus?.bridge?.scan_hz ? robotStatus.bridge.scan_hz.toFixed(1) : '9.3')} Hz</span>
+            <span className="text-gray-400">({robotStatus?.lidar?.points || 360} pts)</span>
+          </div>
+
+          {/* Run Full Autonomous Simulation Tour Button */}
+          <button
+            onClick={handleToggleTour}
+            disabled={loadingTour}
+            className={`px-3.5 py-1.5 rounded-xl border text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-lg active:scale-95 ${
+              tourActive
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white border-purple-300 animate-pulse'
+                : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400/50'
+            }`}
+            title="Start/Stop 5-Room Autonomous Simulation Tour"
+          >
+            {tourActive ? <Square size={14} fill="white" /> : <Play size={14} fill="white" />}
+            <span>{tourActive ? 'Stop Tour' : 'Run Simulation Tour'}</span>
+          </button>
+
           <button
             onClick={toggleBoost}
             className={`px-3 py-1.5 rounded-xl border text-xs font-black flex items-center gap-2 transition-all shadow-md active:scale-95 ${
@@ -105,7 +180,7 @@ export const LiveRobotTracking: React.FC = () => {
             }`}
           >
             <Zap size={15} className={boostActive ? 'fill-black' : 'text-cyan-400'} />
-            <span>{boostActive ? '⚡ BOOST ACTIVE (~1 cm/s)' : '🐢 TURTLE MODE (SLOW)'}</span>
+            <span>{boostActive ? '⚡ BOOST ACTIVE' : '🐢 TURTLE MODE'}</span>
           </button>
 
           <button
@@ -137,6 +212,62 @@ export const LiveRobotTracking: React.FC = () => {
               showLabel={true}
               showOledBezel={true}
             />
+          </div>
+
+          {/* Robot Conduction Controls (Manual Drive Pad) */}
+          <div className="glass-panel p-4 rounded-2xl border border-white/10 space-y-3">
+            <div className="flex items-center justify-between text-xs font-mono font-bold text-gray-400 uppercase">
+              <span className="flex items-center gap-1.5 text-white">
+                <Gamepad2 size={16} className="text-cyan-400" /> Robot Conduction
+              </span>
+              <span className="text-[10px] text-cyan-400">{currentDirection}</span>
+            </div>
+
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={() => handleConduct('MOVE_FORWARD')}
+                className="w-24 py-2 rounded-xl bg-slate-900 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400 text-white text-xs font-black flex items-center justify-center gap-1 active:scale-95 transition-all"
+                title="Conduct Forward (W / Up)"
+              >
+                <ArrowUp size={14} className="text-cyan-400" /> FWD
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleConduct('TURN_LEFT')}
+                  className="w-16 py-2 rounded-xl bg-slate-900 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400 text-white text-xs font-black flex items-center justify-center gap-1 active:scale-95 transition-all"
+                  title="Turn Left (A / Left)"
+                >
+                  <ArrowLeft size={14} className="text-cyan-400" /> L
+                </button>
+
+                <button
+                  onClick={() => handleConduct('STOP')}
+                  className="w-16 py-2 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-500/40 text-red-300 text-xs font-black flex items-center justify-center gap-1 active:scale-95 transition-all"
+                  title="Halt Motors (Space / S)"
+                >
+                  <Pause size={14} className="text-red-400" /> STOP
+                </button>
+
+                <button
+                  onClick={() => handleConduct('TURN_RIGHT')}
+                  className="w-16 py-2 rounded-xl bg-slate-900 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400 text-white text-xs font-black flex items-center justify-center gap-1 active:scale-95 transition-all"
+                  title="Turn Right (D / Right)"
+                >
+                  R <ArrowRight size={14} className="text-cyan-400" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleConduct('MOVE_BACKWARD')}
+                  className="w-24 py-2 rounded-xl bg-slate-900 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400 text-white text-xs font-black flex items-center justify-center gap-1 active:scale-95 transition-all"
+                  title="Conduct Reverse (S / Down)"
+                >
+                  <ArrowDown size={14} className="text-cyan-400" /> REV
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Real-Time Pose & Heading Card */}

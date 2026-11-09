@@ -20,7 +20,7 @@ from urllib import request as url_request
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, TransformStamped, PoseStamped
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, OccupancyGrid
 from sensor_msgs.msg import Range
 from tf2_ros import TransformBroadcaster
 
@@ -83,6 +83,16 @@ class Ros2ToEsp32Bridge(Node):
         # 4. Front Ultrasonic Range Publisher
         self.range_pub = self.create_publisher(Range, "/ultrasonic/range", 10)
         self.create_timer(0.10, self.poll_and_publish_ultrasonic)
+
+        # 5. SLAM Toolbox 2D Occupancy Grid Map Subscriber (Syncs with Web Dashboard)
+        self.map_sync_url = "http://127.0.0.1:8000/api/maps/sync_ros2"
+        self.last_map_sync_time = 0.0
+        self.sub_map = self.create_subscription(
+            OccupancyGrid,
+            "/map",
+            self.on_map_received,
+            1
+        )
 
         # Current Robot Pose for Open-Loop Odometry
         self.x = 0.0
@@ -334,7 +344,33 @@ class Ros2ToEsp32Bridge(Node):
             except Exception:
                 pass
 
-            time.sleep(0.10)  # Rate limit to 10 Hz
+    def on_map_received(self, msg: OccupancyGrid):
+        """Forwards SLAM Toolbox 2D occupancy grid map updates to RoboNav Web Dashboard."""
+        now = time.time()
+        if now - self.last_map_sync_time < 0.75:
+            return  # Throttle to max ~1.3 Hz to preserve web socket bandwidth
+        self.last_map_sync_time = now
+
+        try:
+            # Map values in nav_msgs/OccupancyGrid: -1=unknown, 0=free, 100=occupied
+            grid_list = list(msg.data)
+            payload = {
+                "name": "ROS 2 SLAM Toolbox Map",
+                "width": int(msg.info.width),
+                "height": int(msg.info.height),
+                "resolution": float(msg.info.resolution),
+                "origin_x": float(msg.info.origin.position.x),
+                "origin_y": float(msg.info.origin.position.y),
+                "data": grid_list
+            }
+            req = url_request.Request(
+                self.map_sync_url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json", "User-Agent": "ROS2Bridge"}
+            )
+            url_request.urlopen(req, timeout=0.5)
+        except Exception:
+            pass
 
 
 def main(args=None):

@@ -36,6 +36,16 @@ class RobotSimulator:
         
         self.wait_timer = None
         self.mapping_active = False
+        self.tour_active = False
+        self.tour_step = 0
+        self.tour_waypoints = [
+            {"x": 1.5, "y": 1.5, "name": "Entrance", "id": "entrance"},
+            {"x": 3.0, "y": 3.0, "name": "Reception", "id": "reception"},
+            {"x": 10.0, "y": 7.5, "name": "Meeting Room", "id": "meeting"},
+            {"x": 4.0, "y": 6.0, "name": "Room B", "id": "room_b"},
+            {"x": 3.0, "y": 12.0, "name": "Room A", "id": "room_a"},
+            {"x": 2.0, "y": 2.0, "name": "Charging Station", "id": "home"}
+        ]
 
     def _generate_environment(self) -> List[List[int]]:
         grid = [[0 for _ in range(self.grid_width)] for _ in range(self.grid_height)]
@@ -173,11 +183,42 @@ class RobotSimulator:
                     self.current_path = [goal]
                 self.state = "RETURNING_HOME"
                 self.wait_timer = None
+            elif ctype == "START_TOUR":
+                self.tour_active = True
+                self.tour_step = 0
+                self._dispatch_next_tour_step()
+            elif ctype == "STOP_TOUR":
+                self.tour_active = False
+                self.state = "IDLE"
+                self.velocity = 0.0
+                self.current_path = []
+            elif ctype in ["U_TURN_LEFT", "U_TURN_RIGHT"]:
+                turn_deg = 180 if ctype == "U_TURN_LEFT" else -180
+                self.orientation = (self.orientation + turn_deg) % 360
             elif ctype == "EMERGENCY_STOP":
                 self.velocity = 0.0
                 self.current_path = []
                 self.state = "EMERGENCY_STOP"
                 self.wait_timer = None
+                self.tour_active = False
+
+    def _dispatch_next_tour_step(self):
+        if not self.tour_active or not self.tour_waypoints:
+            return
+        dest = self.tour_waypoints[self.tour_step]
+        self.destination = dest
+        start = (self.position["x"], self.position["y"])
+        goal = (dest["x"], dest["y"])
+        plan = plan_path(self.virtual_environment, start, goal, self.resolution)
+        if plan and plan.get("path"):
+            self.current_path = plan["path"]
+        else:
+            self.current_path = [goal]
+        self.state = "NAVIGATING"
+        self.wait_timer = None
+        from app.api.robot import speed_control_state
+        speed_control_state["oled_expression"] = "LOOKING AHEAD"
+        speed_control_state["current_direction"] = "FORWARD"
 
     def _sync_robot_state(self):
         """Keep global robot_state in sync with simulator state."""
@@ -192,14 +233,14 @@ class RobotSimulator:
 
     async def run(self):
         while self.is_running:
+            await self.process_commands()
+
             from app.api.robot import bridge_metrics
             is_hardware_active = (time.time() - bridge_metrics["last_seen"] < 4.0) if bridge_metrics["last_seen"] > 0 else False
-            if is_hardware_active:
-                # Real hardware LiDAR is active! Yield to avoid clobbering real robot position, rays, and maps
-                await asyncio.sleep(0.5)
+            if is_hardware_active and not self.tour_active:
+                # Real hardware LiDAR is active; yield sensor overwrite to real LiDAR telemetry
+                await asyncio.sleep(0.1)
                 continue
-
-            await self.process_commands()
             
             self._update_battery()
             self._update_movement()
@@ -342,10 +383,14 @@ class RobotSimulator:
 
     def _update_waiting(self):
         if self.state == "WAITING_AT_DESTINATION" and self.wait_timer:
-            wait_time = 30 if self.demo_mode else 300
+            wait_time = 3.0 if self.tour_active else (5.0 if self.demo_mode else 15.0)
             if time.time() - self.wait_timer > wait_time:
-                self.command_queue.put_nowait({"type": "RETURN_HOME"})
                 self.wait_timer = None
+                if self.tour_active:
+                    self.tour_step = (self.tour_step + 1) % len(self.tour_waypoints)
+                    self._dispatch_next_tour_step()
+                else:
+                    self.command_queue.put_nowait({"type": "RETURN_HOME"})
 
     async def _send_status(self):
         from app.services.video_service import video_service

@@ -147,5 +147,8 @@ export const getNavigationCurrent = () => api.get('/navigation/current');
 export const getLogs = (filters?: any) => api.get('/logs', { params: filters });
 export const toggleSimulation = (enabled: boolean) => api.post('/simulation/toggle', { enabled });
 export const toggleDemoTime = (enabled: boolean) => api.post('/simulation/demo-time', { enabled });
+export const toggleSimTour = () => api.post('/simulation/tour');
+export const getSimStatus = () => api.get('/simulation/status');
 
 export default api;
+
