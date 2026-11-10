@@ -173,6 +173,8 @@ async def read_robot_status(robot_id: Optional[str] = None, current_user: Option
     status["slam_pose"] = slam_pose_state
     status["localization_status"] = "LOCALIZED" if (slam_pose_state.get("localized") and (time.time() - slam_pose_state.get("last_seen", 0) < 3.0)) else ("MAPPING" if is_bridge_active else "IDLE")
     status["slam_status"] = slam_pose_state.get("status", "SLAM_ACTIVE" if is_bridge_active else "IDLE")
+    status["loop_closures"] = getattr(robot_state, "loop_closures", simulator.loop_closures)
+    status["rooms"] = getattr(robot_state, "rooms", simulator.rooms)
     status["mpu9250"] = mpu9250_data
     status["ultrasonic"] = ultrasonic_data
     status["speed_control"] = speed_control_state
@@ -228,6 +230,8 @@ async def get_robot_telemetry(current_user: Optional[User] = Depends(get_optiona
         "slam_pose": slam_pose_state,
         "localization_status": "LOCALIZED" if (slam_pose_state.get("localized") and (time.time() - slam_pose_state.get("last_seen", 0) < 3.0)) else ("MAPPING" if is_bridge_active else "IDLE"),
         "slam_status": slam_pose_state.get("status", "SLAM_ACTIVE" if is_bridge_active else "IDLE"),
+        "loop_closures": getattr(robot_state, "loop_closures", simulator.loop_closures),
+        "rooms": getattr(robot_state, "rooms", simulator.rooms),
         "current_destination": robot_state.destination,
         "destination": robot_state.destination,
         "navigation_progress": getattr(robot_state, "navigation_progress", 0),

@@ -12,15 +12,17 @@ class RobotSimulator:
         self.demo_mode = False
         self.time_scale = 1.0
         
-        self.grid_width = 400
-        self.grid_height = 300
+        self.grid_width = 600
+        self.grid_height = 600
         self.resolution = 0.05
+        self.origin_x = -15.0
+        self.origin_y = -15.0
         
         self.virtual_environment = self._generate_environment()
         self.explored_map = [[-1 for _ in range(self.grid_width)] for _ in range(self.grid_height)]
         
-        self.position = {"x": 2.0, "y": 2.0}
-        self.orientation = 0.0
+        self.position = {"x": 0.0, "y": 0.0}
+        self.orientation = 90.0
         self.velocity = 0.0
         self.battery = 100.0
         
@@ -39,80 +41,142 @@ class RobotSimulator:
         self.tour_active = False
         self.tour_step = 0
         self.tour_waypoints = [
-            {"x": 1.5, "y": 1.5, "name": "Entrance", "id": "entrance"},
-            {"x": 3.0, "y": 3.0, "name": "Reception", "id": "reception"},
-            {"x": 10.0, "y": 7.5, "name": "Meeting Room", "id": "meeting"},
-            {"x": 4.0, "y": 6.0, "name": "Room B", "id": "room_b"},
-            {"x": 3.0, "y": 12.0, "name": "Room A", "id": "room_a"},
-            {"x": 2.0, "y": 2.0, "name": "Charging Station", "id": "home"}
+            {"x": 0.0, "y": 0.0, "name": "HOME (0,0)", "id": "home"},
+            {"x": 2.0, "y": -3.5, "name": "Bedroom 2", "id": "bedroom2"},
+            {"x": 5.5, "y": -3.5, "name": "Bathroom", "id": "bathroom"},
+            {"x": 1.0, "y": 0.0, "name": "Hallway (LC1)", "id": "lc1"},
+            {"x": 9.5, "y": 3.0, "name": "Master Bedroom", "id": "master_bedroom"},
+            {"x": 9.5, "y": -1.5, "name": "Closet", "id": "closet"},
+            {"x": 6.5, "y": 0.5, "name": "Hallway (LC2)", "id": "lc2"},
+            {"x": 2.5, "y": 4.0, "name": "Kitchen", "id": "kitchen"},
+            {"x": -2.5, "y": 3.5, "name": "Dining Area", "id": "dining"},
+            {"x": -6.0, "y": -2.5, "name": "Living Room", "id": "living_room"},
+            {"x": -3.5, "y": 0.0, "name": "Hallway (LC3)", "id": "lc3"},
+            {"x": 0.0, "y": 0.0, "name": "HOME (0,0)", "id": "home"}
+        ]
+        self.loop_closures = [
+            {"id": "LC1", "x": 1.0, "y": 0.0, "label": "LC1"},
+            {"id": "LC2", "x": 6.5, "y": 0.5, "label": "LC2"},
+            {"id": "LC3", "x": -3.5, "y": 0.0, "label": "LC3"}
+        ]
+        self.rooms = [
+            {"name": "Living Room", "x": -6.0, "y": -2.5},
+            {"name": "Dining Area", "x": -2.5, "y": 3.5},
+            {"name": "Kitchen", "x": 2.5, "y": 4.5},
+            {"name": "Hallway", "x": 4.0, "y": 0.0},
+            {"name": "Entryway", "x": -1.0, "y": -4.0},
+            {"name": "Bedroom 2", "x": 2.0, "y": -3.5},
+            {"name": "Bathroom", "x": 5.5, "y": -3.5},
+            {"name": "Master Bedroom", "x": 9.5, "y": 3.0},
+            {"name": "Closet", "x": 9.5, "y": -1.5},
+            {"name": "Utility Room", "x": 9.5, "y": -4.5},
+            {"name": "Bedroom 2 (North)", "x": -6.5, "y": 3.5},
+            {"name": "Shower", "x": -4.0, "y": 4.5}
         ]
 
     def _generate_environment(self) -> List[List[int]]:
         grid = [[0 for _ in range(self.grid_width)] for _ in range(self.grid_height)]
-        # Outer walls
-        for x in range(self.grid_width):
-            grid[0][x] = 100
-            grid[self.grid_height - 1][x] = 100
-        for y in range(self.grid_height):
-            grid[y][0] = 100
-            grid[y][self.grid_width - 1] = 100
-            
-        # Reception (bottom-left)
-        for y in range(0, 100):
-            grid[y][100] = 100
-        for x in range(0, 100):
-            grid[100][x] = 100
-        for x in range(40, 60):
-            grid[100][x] = 0
-            
-        # Room A (top-left)
-        for x in range(0, 120):
-            grid[200][x] = 100
-        for y in range(200, 300):
-            grid[y][120] = 100
-        for y in range(240, 260):
-            grid[y][120] = 0
-            
-        # Room B (top-right)
-        for x in range(250, 400):
-            grid[200][x] = 100
-        for y in range(200, 300):
-            grid[y][250] = 100
-        for x in range(300, 320):
-            grid[200][x] = 0
-            
-        # Room C (bottom-right)
-        for x in range(280, 400):
-            grid[120][x] = 100
-        for y in range(0, 120):
-            grid[y][280] = 100
-        for y in range(50, 70):
-            grid[y][280] = 0
-            
-        # Meeting room (center)
-        for x in range(160, 240):
-            grid[120][x] = 100
-            grid[180][x] = 100
-        for y in range(120, 180):
-            grid[y][160] = 100
-            grid[y][240] = 100
-        for x in range(190, 210):
-            grid[120][x] = 0
-            
-        # Glass walls
-        for y in range(130, 170):
-            grid[y][160] = 50 
-        for x in range(290, 390):
-            grid[120][x] = 50 
-            
-        # Small obstacles
-        obstacles = [(130, 150), (260, 150), (140, 80), (250, 250)]
-        for ox, oy in obstacles:
-            for dy in range(-2, 3):
-                for dx in range(-2, 3):
-                    if 0 <= ox+dx < 400 and 0 <= oy+dy < 300:
-                        grid[oy+dy][ox+dx] = 100
         
+        def to_gx(wx: float) -> int:
+            return max(0, min(self.grid_width - 1, int((wx - self.origin_x) / self.resolution)))
+            
+        def to_gy(wy: float) -> int:
+            return max(0, min(self.grid_height - 1, int((wy - self.origin_y) / self.resolution)))
+
+        def h_wall(wx1: float, wx2: float, wy: float, thick: int = 2):
+            gx1, gx2 = sorted([to_gx(wx1), to_gx(wx2)])
+            gy = to_gy(wy)
+            for x in range(gx1, gx2 + 1):
+                for t in range(thick):
+                    if 0 <= gy + t < self.grid_height:
+                        grid[gy + t][x] = 100
+
+        def v_wall(wx: float, wy1: float, wy2: float, thick: int = 2):
+            gy1, gy2 = sorted([to_gy(wy1), to_gy(wy2)])
+            gx = to_gx(wx)
+            for y in range(gy1, gy2 + 1):
+                for t in range(thick):
+                    if 0 <= gx + t < self.grid_width:
+                        grid[y][gx + t] = 100
+
+        def clear_rect(wx1: float, wy1: float, wx2: float, wy2: float):
+            gx1, gx2 = sorted([to_gx(wx1), to_gx(wx2)])
+            gy1, gy2 = sorted([to_gy(wy1), to_gy(wy2)])
+            for y in range(gy1, gy2 + 1):
+                for x in range(gx1, gx2 + 1):
+                    grid[y][x] = 0
+
+        # 1. House Outer Perimeter Walls (24m x 12m)
+        h_wall(-12.0, 12.0, -6.0)  # South exterior
+        h_wall(-12.0, 12.0, 6.0)   # North exterior
+        v_wall(-12.0, -6.0, 6.0)   # West exterior
+        v_wall(12.0, -6.0, 6.0)    # East exterior
+
+        # 2. Main Interior Dividing Walls
+        # Left Wing Divider (x = -4.0)
+        v_wall(-4.0, -6.0, 6.0)
+        # Doorway into Living Room (South)
+        clear_rect(-4.3, -2.5, -3.7, -1.0)
+        # Doorway into Dining Area (North)
+        clear_rect(-4.3, 1.5, -3.7, 3.0)
+
+        # Living Room & Dining Area partition (y = 0.5)
+        h_wall(-12.0, -4.0, 0.5)
+        # Open archway between Living & Dining
+        clear_rect(-8.5, 0.2, -7.0, 0.8)
+
+        # North Bedroom partition (y = 3.5)
+        h_wall(-12.0, -4.0, 3.5)
+        clear_rect(-7.0, 3.2, -6.0, 3.8)
+
+        # Entryway East Wall (x = 0.0)
+        v_wall(0.0, -6.0, -1.0)
+        clear_rect(-0.3, -3.5, 0.3, -2.5)
+
+        # Kitchen / Central Hallway Boundaries (y = 1.0)
+        h_wall(-4.0, 7.0, 1.0)
+        # Wide kitchen entrance from hallway
+        clear_rect(1.0, 0.7, 3.5, 1.3)
+
+        # Central Hallway South Wall (y = -1.0)
+        h_wall(-4.0, 7.0, -1.0)
+        # Doorway from Hallway to Entryway
+        clear_rect(-2.5, -1.3, -1.0, -0.7)
+        # Doorway from Hallway to Bedroom 2
+        clear_rect(1.5, -1.3, 2.5, -0.7)
+        # Doorway from Hallway to Bathroom
+        clear_rect(4.5, -1.3, 5.5, -0.7)
+
+        # Divider between Bedroom 2 and Bathroom (x = 3.5)
+        v_wall(3.5, -6.0, -1.0)
+
+        # Right Wing Divider (x = 7.0)
+        v_wall(7.0, -6.0, 6.0)
+        # Hallway entry into Master Suite
+        clear_rect(6.7, -0.5, 7.3, 1.0)
+
+        # Master Bedroom & Closet divider (y = 0.5)
+        h_wall(7.0, 12.0, 0.5)
+        clear_rect(8.5, 0.2, 9.5, 0.8)
+
+        # Closet & Utility Room divider (y = -3.0)
+        h_wall(7.0, 12.0, -3.0)
+        clear_rect(9.0, -3.3, 10.0, -2.7)
+
+        # Furniture & Structural obstacles
+        # Living room couch / table
+        for y in range(to_gy(-3.5), to_gy(-2.5)):
+            for x in range(to_gx(-8.5), to_gx(-7.0)):
+                grid[y][x] = 100
+        # Kitchen island
+        for y in range(to_gy(3.0), to_gy(4.0)):
+            for x in range(to_gx(1.5), to_gx(2.5)):
+                grid[y][x] = 100
+        # Master bed
+        for y in range(to_gy(3.5), to_gy(5.0)):
+            for x in range(to_gx(9.5), to_gx(11.0)):
+                grid[y][x] = 100
+
         return grid
 
     async def start(self):
@@ -165,7 +229,7 @@ class RobotSimulator:
                 self.destination = cmd.get("destination")
                 start = (self.position["x"], self.position["y"])
                 goal = (self.destination["x"], self.destination["y"])
-                plan = plan_path(self.virtual_environment, start, goal, self.resolution)
+                plan = plan_path(self.virtual_environment, start, goal, self.resolution, self.origin_x, self.origin_y)
                 if plan and plan.get("path"):
                     self.current_path = plan["path"]
                 else:
@@ -173,10 +237,10 @@ class RobotSimulator:
                 self.state = "NAVIGATING"
                 self.wait_timer = None
             elif ctype == "RETURN_HOME":
-                self.destination = {"x": 2.0, "y": 2.0, "name": "Charging Station", "id": "home"}
+                self.destination = {"x": 0.0, "y": 0.0, "name": "HOME (0,0)", "id": "home"}
                 start = (self.position["x"], self.position["y"])
                 goal = (self.destination["x"], self.destination["y"])
-                plan = plan_path(self.virtual_environment, start, goal, self.resolution)
+                plan = plan_path(self.virtual_environment, start, goal, self.resolution, self.origin_x, self.origin_y)
                 if plan and plan.get("path"):
                     self.current_path = plan["path"]
                 else:
@@ -209,7 +273,7 @@ class RobotSimulator:
         self.destination = dest
         start = (self.position["x"], self.position["y"])
         goal = (dest["x"], dest["y"])
-        plan = plan_path(self.virtual_environment, start, goal, self.resolution)
+        plan = plan_path(self.virtual_environment, start, goal, self.resolution, self.origin_x, self.origin_y)
         if plan and plan.get("path"):
             self.current_path = plan["path"]
         else:
@@ -330,7 +394,7 @@ class RobotSimulator:
             if self.destination:
                 start = (self.position["x"], self.position["y"])
                 goal = (self.destination["x"], self.destination["y"])
-                plan = plan_path(self.virtual_environment, start, goal, self.resolution)
+                plan = plan_path(self.virtual_environment, start, goal, self.resolution, self.origin_x, self.origin_y)
                 if plan and plan.get("path"):
                     self.current_path = plan["path"]
                     self.state = "NAVIGATING" if self.destination.get("id") != "home" else "RETURNING_HOME"
@@ -338,8 +402,8 @@ class RobotSimulator:
                     self.state = "IDLE"
 
     def _check_collision(self, x: float, y: float) -> bool:
-        grid_x = int(x / self.resolution)
-        grid_y = int(y / self.resolution)
+        grid_x = int((x - self.origin_x) / self.resolution)
+        grid_y = int((y - self.origin_y) / self.resolution)
         if 0 <= grid_x < self.grid_width and 0 <= grid_y < self.grid_height:
             return self.virtual_environment[grid_y][grid_x] >= 50
         return True
@@ -347,9 +411,6 @@ class RobotSimulator:
     def _update_slam(self):
         self.lidar_rays = []
         max_range = 8.0
-        grid_x = int(self.position["x"] / self.resolution)
-        grid_y = int(self.position["y"] / self.resolution)
-        
         self.recent_map_updates = []
         
         for angle_deg in range(360):
@@ -361,8 +422,10 @@ class RobotSimulator:
             hit = False
             
             while dist < max_range:
-                check_x = int((self.position["x"] + dist * cos_a) / self.resolution)
-                check_y = int((self.position["y"] + dist * sin_a) / self.resolution)
+                curr_x = self.position["x"] + dist * cos_a
+                curr_y = self.position["y"] + dist * sin_a
+                check_x = int((curr_x - self.origin_x) / self.resolution)
+                check_y = int((curr_y - self.origin_y) / self.resolution)
                 
                 if 0 <= check_x < self.grid_width and 0 <= check_y < self.grid_height:
                     val = self.virtual_environment[check_y][check_x]
@@ -417,6 +480,10 @@ class RobotSimulator:
                 "navigation_progress": progress,
                 "distance_remaining": rem_dist,
                 "estimated_time_remaining": rem_dist / max(0.1, abs(self.velocity)) if self.velocity != 0 else 0,
+                "origin_x": self.origin_x,
+                "origin_y": self.origin_y,
+                "loop_closures": self.loop_closures,
+                "rooms": self.rooms,
                 "hardware": {
                     "pc_server": "ONLINE",
                     "esp32": "ONLINE",
@@ -477,7 +544,11 @@ class RobotSimulator:
             "type": "map_update",
             "data": {
                 "cells": self.recent_map_updates,
-                "coverage": coverage
+                "coverage": coverage,
+                "origin_x": self.origin_x,
+                "origin_y": self.origin_y,
+                "loop_closures": self.loop_closures,
+                "rooms": self.rooms
             }
         }
         await manager.broadcast_to_browsers(msg)

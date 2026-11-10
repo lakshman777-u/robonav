@@ -59,6 +59,7 @@ export interface RobotStatus {
   localization_status?: string;
   slam_status?: string;
   wifi?: string;
+  loop_closures?: Array<{ id: string; x: number; y: number; label?: string }>;
   motors?: {
     state: string;
     left_speed: number;

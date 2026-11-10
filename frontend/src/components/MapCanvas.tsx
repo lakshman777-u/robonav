@@ -5,7 +5,9 @@ import { useCarTrim } from '../context/CarTrimContext';
 import { 
   drawGrid, drawRobot, drawDestination, drawRoomFlags, drawPath, 
   canvasToWorld, drawLiveLidarHits, drawMetricGuides,
-  drawTrajectoryTrail
+  drawTrajectoryTrail, drawHomeMarker, drawLoopClosureMarkers,
+  drawRoomLabels, drawReferenceMetricScale, drawMapTitleAndLegend,
+  DEFAULT_HOUSE_ROOMS
 } from '../utils/mapRenderer';
 import { Navigation3DView } from './Navigation3DView';
 import { createDestination } from '../services/api';
@@ -114,39 +116,37 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
       const smoothY = animPoseRef.current.y;
       const smoothHeading = animPoseRef.current.heading;
 
-      // 1. Draw Metric 1-meter distance grid lines (Subtle Red Grid)
+      // 1. Draw Metric 1-meter and 5-meter coordinate grid lines
       drawMetricGuides(ctx, canvas.width, canvas.height, curScale, curOffset);
 
-      // 2. Draw 2D SLAM Occupancy Grid if available (using 0.02ms hardware offscreen canvas)
+      // -------------------------------------------------------------
+      // LAYER 1: PERMANENT SLAM OCCUPANCY MAP (Fixed physical world)
+      // -------------------------------------------------------------
       if (curMap && curMap.occupancy_grid) {
-        drawGrid(ctx, curMap.occupancy_grid, curMap.width, curMap.height, curScale, curOffset);
-      } else {
-        // Subtle background grid radar guides
-        const cx = canvas.width / 2;
-        const cy = canvas.height / 2;
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.08)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(cx, cy, 140, 0, Math.PI * 2);
-        ctx.arc(cx, cy, 280, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.18)';
-        ctx.beginPath();
-        ctx.moveTo(cx - 300, cy);
-        ctx.lineTo(cx + 300, cy);
-        ctx.moveTo(cx, cy - 300);
-        ctx.lineTo(cx, cy + 300);
-        ctx.stroke();
+        const originX = curMap.origin_x ?? (curMap.origin?.x ?? -10.0);
+        const originY = curMap.origin_y ?? (curMap.origin?.y ?? -10.0);
+        const res = curMap.resolution ?? 0.05;
+        drawGrid(
+          ctx, 
+          curMap.occupancy_grid, 
+          curMap.width, 
+          curMap.height, 
+          curScale, 
+          curOffset, 
+          originX, 
+          originY, 
+          res
+        );
       }
 
-      // 3. Draw real-time travel trajectory breadcrumb trail (Dark Crimson)
-      if (curRobot?.trajectory && curRobot.trajectory.length > 1) {
-        drawTrajectoryTrail(ctx, curRobot.trajectory, curScale, curOffset);
-      }
+      // Draw fixed architectural room labels (Living Room, Kitchen, Dining Area, etc.)
+      const roomList = curMap?.rooms && curMap.rooms.length > 0 ? curMap.rooms : DEFAULT_HOUSE_ROOMS;
+      drawRoomLabels(ctx, roomList, curScale, curOffset);
 
-      // 4. Draw Live LiDAR bounce-backed reflection dots for the current frame
-      // Bright neon red points shift dynamically with robot pose and never burn into the map!
+      // -------------------------------------------------------------
+      // LAYER 2: LIVE LIDAR SCAN (Current frame reflection points)
+      // Dynamic live points shift with robot and leave ZERO residue on map
+      // -------------------------------------------------------------
       const currentRays = curSensor?.lidar?.rays || (curRobot as any)?.lidar?.rays || [];
       if (currentRays.length > 0) {
         drawLiveLidarHits(
@@ -160,20 +160,43 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
         );
       }
 
-      // 5. Draw planned autonomous navigation path (High-Tech Red Ribbon)
-      if (curNav) {
+      // -------------------------------------------------------------
+      // LAYER 3: ROBOT, HOME (0,0), LOOP CLOSURES & NAVIGATION
+      // -------------------------------------------------------------
+      // HOME (0,0) green bullseye marker matching reference image
+      drawHomeMarker(ctx, curScale, curOffset);
+
+      // Loop Closure blue markers (LC1, LC2, LC3) matching reference image
+      const loopClosures = curMap?.loop_closures || (curRobot as any)?.loop_closures || [];
+      if (loopClosures.length > 0) {
+        drawLoopClosureMarkers(ctx, loopClosures, curScale, curOffset);
+      }
+
+      // Real-time travel trajectory continuous red path
+      if (curRobot?.trajectory && curRobot.trajectory.length > 1) {
+        drawTrajectoryTrail(ctx, curRobot.trajectory, curScale, curOffset);
+      }
+
+      // Planned autonomous navigation path (High-Tech Red Ribbon)
+      if (curNav && curNav.length > 0) {
         drawPath(ctx, curNav, curScale, curOffset);
       }
 
-      // 6. Draw destination pins and custom room flags
+      // Destination pins and custom room flags
       if (curDests) {
         drawRoomFlags(ctx, curDests, curScale, curOffset);
       }
 
-      // 7. Draw robot chassis, wheels, forward heading pointer, and LiDAR turret (Motor Facing North)
+      // Robot chassis, wheels, forward heading pointer, and ruby laser diode
       if (curRobot) {
         drawRobot(ctx, smoothX, smoothY, smoothHeading, curScale, curOffset);
       }
+
+      // -------------------------------------------------------------
+      // OVERLAYS: Metric Scale Ruler & Header Legend Bar
+      // -------------------------------------------------------------
+      drawReferenceMetricScale(ctx, canvas.width, canvas.height, curScale);
+      drawMapTitleAndLegend(ctx, canvas.width);
 
       animationFrameId = requestAnimationFrame(render);
     };

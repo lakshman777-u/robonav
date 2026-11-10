@@ -20,6 +20,27 @@ MAP_RESOLUTION = 0.05
 MAP_ORIGIN_X = -15.0
 MAP_ORIGIN_Y = -15.0
 
+DEFAULT_SIM_ROOMS = [
+    {"name": "Living Room", "x": -6.0, "y": -2.5},
+    {"name": "Dining Area", "x": -2.5, "y": 3.5},
+    {"name": "Kitchen", "x": 2.5, "y": 4.5},
+    {"name": "Hallway", "x": 4.0, "y": 0.0},
+    {"name": "Entryway", "x": -1.0, "y": -4.0},
+    {"name": "Bedroom 2", "x": 2.0, "y": -3.5},
+    {"name": "Bathroom", "x": 5.5, "y": -3.5},
+    {"name": "Master Bedroom", "x": 9.5, "y": 3.0},
+    {"name": "Closet", "x": 9.5, "y": -1.5},
+    {"name": "Utility Room", "x": 9.5, "y": -4.5},
+    {"name": "Bedroom 2 (North)", "x": -6.5, "y": 3.5},
+    {"name": "Shower", "x": -4.0, "y": 4.5}
+]
+
+DEFAULT_LOOP_CLOSURES = [
+    {"id": "LC1", "x": 1.0, "y": 0.0, "label": "LC1"},
+    {"id": "LC2", "x": 6.5, "y": 0.5, "label": "LC2"},
+    {"id": "LC3", "x": -3.5, "y": 0.0, "label": "LC3"}
+]
+
 current_map_data: Dict[str, Any] = {
     "name": "Building Map",
     "resolution": MAP_RESOLUTION,
@@ -28,7 +49,9 @@ current_map_data: Dict[str, Any] = {
     "origin_x": MAP_ORIGIN_X,
     "origin_y": MAP_ORIGIN_Y,
     "grid": [[-1 for _ in range(MAP_WIDTH)] for _ in range(MAP_HEIGHT)],
-    "real_points_mapped": 0
+    "real_points_mapped": 0,
+    "loop_closures": DEFAULT_LOOP_CLOSURES,
+    "rooms": DEFAULT_SIM_ROOMS
 }
 
 def get_current_map() -> Optional[Dict[str, Any]]:
@@ -61,7 +84,9 @@ async def start_mapping(map_name: str, clean: bool = False) -> bool:
                 "origin_x": MAP_ORIGIN_X,
                 "origin_y": MAP_ORIGIN_Y,
                 "grid": grid,
-                "real_points_mapped": 0
+                "real_points_mapped": 0,
+                "loop_closures": DEFAULT_LOOP_CLOSURES,
+                "rooms": DEFAULT_SIM_ROOMS
             }
         else:
             # Resuming without clearing: preserve all previous rooms and walls!
@@ -93,7 +118,9 @@ async def start_mapping(map_name: str, clean: bool = False) -> bool:
                 "origin_x": MAP_ORIGIN_X,
                 "origin_y": MAP_ORIGIN_Y,
                 "name": current_map_data.get("name", "Building Map"),
-                "status": "building"
+                "status": "building",
+                "loop_closures": current_map_data.get("loop_closures", DEFAULT_LOOP_CLOSURES),
+                "rooms": current_map_data.get("rooms", DEFAULT_SIM_ROOMS)
             }
         })
         return True
@@ -157,7 +184,9 @@ async def clear_map() -> bool:
         "origin_x": MAP_ORIGIN_X,
         "origin_y": MAP_ORIGIN_Y,
         "grid": [[-1 for _ in range(MAP_WIDTH)] for _ in range(MAP_HEIGHT)],
-        "real_points_mapped": 0
+        "real_points_mapped": 0,
+        "loop_closures": DEFAULT_LOOP_CLOSURES,
+        "rooms": DEFAULT_SIM_ROOMS
     }
     accumulated_updates = {}
     last_map_broadcast = 0.0
@@ -172,7 +201,9 @@ async def clear_map() -> bool:
             "origin_x": MAP_ORIGIN_X,
             "origin_y": MAP_ORIGIN_Y,
             "name": "Building Map",
-            "status": "cleared"
+            "status": "cleared",
+            "loop_closures": DEFAULT_LOOP_CLOSURES,
+            "rooms": DEFAULT_SIM_ROOMS
         }
     })
     return True

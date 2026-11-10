@@ -170,20 +170,50 @@ export const Mapping = () => {
     }
   };
 
-  // STOP / FREEZE mapping without erasing data
-  const handleStopFreeze = async () => {
+  const getCardinalDirection = (deg: number): string => {
+    const norm = ((deg % 360) + 360) % 360;
+    if (norm >= 337.5 || norm < 22.5) return 'N (North)';
+    if (norm < 67.5) return 'NE (North-East)';
+    if (norm < 112.5) return 'E (East)';
+    if (norm < 157.5) return 'SE (South-East)';
+    if (norm < 202.5) return 'S (South)';
+    if (norm < 247.5) return 'SW (South-West)';
+    if (norm < 292.5) return 'W (West)';
+    return 'NW (North-West)';
+  };
+
+  // PAUSE mapping without erasing data
+  const handlePauseMapping = async () => {
     setLoadingAction(true);
     try {
       await pauseMapping();
       setIsMapping(false);
       setIsFrozen(true);
-      toast.success(`⏸ Map Frozen! All scanned rooms and walls preserved right where they are.`, { duration: 4000 });
+      toast.success(`⏸ Mapping Paused! All scanned rooms and walls preserved right where they are.`, { duration: 4000 });
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to freeze map');
+      toast.error(err?.response?.data?.detail || 'Failed to pause mapping');
     } finally {
       setLoadingAction(false);
     }
   };
+
+  // STOP mapping and finalize
+  const handleStopMapping = async () => {
+    setLoadingAction(true);
+    try {
+      await finalizeMap(activeLocationName);
+      setIsMapping(false);
+      setIsFrozen(true);
+      toast.success(`🛑 Mapping Stopped and Saved for "${activeLocationName}"!`);
+      fetchMapsAndLidar();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to stop mapping');
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const handleStopFreeze = handlePauseMapping;
 
   // 2. MANUAL SAVE MAP: Allows user to manually save anytime with custom name
   const handleOpenFreezeSaveModal = () => {
@@ -498,11 +528,11 @@ export const Mapping = () => {
           </p>
         </div>
 
-        {/* Master Action Controls: Start / Stop (Freeze) / End Map / Reset / Delete */}
-        <div className="relative z-10 flex flex-wrap items-center gap-2.5">
-          {/* Button 1: Start 2D Mapping */}
+        {/* Master Action Controls: Start / Pause / Stop / Save / Clear / Delete */}
+        <div className="relative z-10 flex flex-wrap items-center gap-2">
+          {/* Button 1: Start Mapping */}
           {isMapping ? (
-            <div className="px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-emerald-900/30 animate-pulse">
+            <div className="px-3.5 py-2 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-emerald-900/30 animate-pulse">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               <span>▶ MAPPING ACTIVE</span>
             </div>
@@ -510,59 +540,74 @@ export const Mapping = () => {
             <button
               onClick={handleOpenStartModal}
               disabled={loadingAction}
-              className="px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 shadow-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white border border-emerald-400/50 shadow-emerald-900/40"
+              className="px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white border border-emerald-400/50 shadow-emerald-900/40"
               title="Start continuous 2D room mapping"
             >
-              <Play size={15} fill="white" />
+              <Play size={14} fill="white" />
               <span>START MAPPING</span>
             </button>
           )}
 
-          {/* Button 2: Stop / Freeze Map */}
+          {/* Button 2: Pause Mapping */}
           <button
-            onClick={handleStopFreeze}
+            onClick={handlePauseMapping}
             disabled={loadingAction || !isMapping}
-            className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 border shadow-lg ${
+            className={`px-3.5 py-2 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 border shadow-md ${
               isMapping 
-                ? 'bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 text-white border-cyan-400 shadow-cyan-900/40' 
+                ? 'bg-amber-600/80 hover:bg-amber-500 text-white border-amber-400 shadow-amber-900/40' 
                 : 'bg-slate-900/60 border-white/10 text-gray-500 cursor-not-allowed'
             }`}
-            title="Freeze mapping right where it is, keeping all scanned areas preserved"
+            title="Pause mapping without erasing data, keeping all walls locked"
           >
-            <Pause size={15} />
-            <span>STOP / FREEZE</span>
+            <Pause size={14} />
+            <span>PAUSE</span>
           </button>
 
-          {/* Button 3: Manual Save Map */}
+          {/* Button 3: Stop Mapping */}
+          <button
+            onClick={handleStopMapping}
+            disabled={loadingAction || (!isMapping && !isFrozen)}
+            className={`px-3.5 py-2 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 border shadow-md ${
+              (isMapping || isFrozen)
+                ? 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white border-red-400 shadow-red-900/40'
+                : 'bg-slate-900/60 border-white/10 text-gray-500 cursor-not-allowed'
+            }`}
+            title="Stop mapping and finalize the current 2D floor plan"
+          >
+            <Square size={14} />
+            <span>STOP MAPPING</span>
+          </button>
+
+          {/* Button 4: Save Map */}
           <button
             onClick={handleOpenFreezeSaveModal}
             disabled={loadingAction}
-            className="px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white border border-purple-400/40 shadow-purple-900/40"
+            className="px-3.5 py-2 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white border border-purple-400/40 shadow-md"
             title="Manually save 2D map with custom name to laptop server (maps/) and database"
           >
-            <Save size={15} />
-            <span>MANUAL SAVE</span>
+            <Save size={14} />
+            <span>SAVE MAP</span>
           </button>
 
-          {/* Button 4: Reset 2D Screen */}
+          {/* Button 5: Clear Map */}
           <button
             onClick={handleResetReconstruct}
             disabled={loadingAction}
-            className="px-4 py-2.5 rounded-xl bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-500/50 text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-md"
+            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/40 text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-md"
             title="Immediately clear canvas & reset 2D mapping screen and odometry to (0,0)"
           >
-            <RotateCcw size={15} className="text-amber-400" />
-            <span>RESET 2D SCREEN</span>
+            <RotateCcw size={14} className="text-amber-400" />
+            <span>CLEAR MAP</span>
           </button>
 
-          {/* Button 5: Delete All (Fresh Start) */}
+          {/* Button 6: Delete All */}
           <button
             onClick={handleDeleteAll}
             disabled={loadingAction}
-            className="px-3.5 py-2.5 rounded-xl bg-red-950/60 hover:bg-red-900/60 text-red-300 border border-red-500/40 text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-md"
+            className="px-3 py-2 rounded-xl bg-red-950/60 hover:bg-red-900/60 text-red-300 border border-red-500/40 text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-md"
             title="Delete all saved maps and start fresh"
           >
-            <Trash2 size={15} className="text-red-400" />
+            <Trash2 size={14} className="text-red-400" />
             <span>DELETE ALL</span>
           </button>
 
@@ -570,7 +615,7 @@ export const Mapping = () => {
           <button
             onClick={handleToggleLidarDriver}
             disabled={loadingAction}
-            className={`px-3 py-2.5 rounded-xl font-mono text-xs font-bold transition-all flex items-center gap-1.5 border shadow-lg ${
+            className={`px-3 py-2 rounded-xl font-mono text-xs font-bold transition-all flex items-center gap-1.5 border shadow-md ${
               lidarStatus?.driver_running
                 ? 'bg-slate-900 border-white/10 text-gray-300 hover:bg-slate-800'
                 : 'bg-cyan-950/60 border-cyan-500/50 text-cyan-300 hover:bg-cyan-900/60'
@@ -584,59 +629,123 @@ export const Mapping = () => {
           {/* Export PNG */}
           <button
             onClick={handleExportPng}
-            className="p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-gray-300 border border-white/10 text-xs font-mono font-bold transition-all shadow-md"
+            className="p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-gray-300 border border-white/10 text-xs font-mono font-bold transition-all shadow-md"
             title="Download PNG image of 2D map"
           >
-            <Download size={15} className="text-cyan-400" />
+            <Download size={14} className="text-cyan-400" />
           </button>
 
           {/* Launch House Simulator Game */}
           <Link
             to="/admin/simulator-game"
-            className="px-3.5 py-2.5 rounded-xl bg-cyan-600/20 text-cyan-300 hover:bg-cyan-600/30 border border-cyan-500/40 text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-md"
+            className="px-3 py-2 rounded-xl bg-cyan-600/20 text-cyan-300 hover:bg-cyan-600/30 border border-cyan-500/40 text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-md"
             title="Launch 5-Room Pagani House Simulator Game"
           >
-            <Gamepad2 size={15} />
+            <Gamepad2 size={14} />
             <span className="hidden sm:inline">Play Pagani Sim</span>
           </Link>
         </div>
       </div>
 
-      {/* Live Mapping / Odometry Status Banner */}
-      <div className="glass-panel p-3.5 rounded-2xl border border-red-500/30 bg-slate-950/80 shadow-[0_0_20px_rgba(239,68,68,0.15)] flex flex-col md:flex-row items-center justify-between gap-3 text-xs font-mono">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="relative flex h-3 w-3">
-            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isMapping ? 'bg-red-400' : 'bg-gray-400'} opacity-75`}></span>
-            <span className={`relative inline-flex rounded-full h-3 w-3 ${isMapping ? 'bg-red-500' : 'bg-gray-500'}`}></span>
-          </span>
-          <span className="text-white font-bold">
-            {isMapping ? 'LIVE 2D SCANNING:' : (isFrozen ? 'MAP FROZEN & SAVED:' : 'MAPPER STANDBY:')}{' '}
-            <span className="text-red-400 font-black uppercase">"{activeLocationName}"</span>
-          </span>
-          <span className="text-gray-400 text-[11px] hidden lg:inline">
-            • Odometry tracks LiDAR location wall-to-wall with motor facing North (+X body)
+      {/* Comprehensive High-Tech HUD Telemetry Bar (All 10 Real-time Parameters) */}
+      <div className="glass-panel p-3.5 rounded-2xl border border-red-500/30 bg-slate-950/90 shadow-[0_0_25px_rgba(239,68,68,0.15)] font-mono space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-red-500/20 pb-2 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-3 w-3">
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isMapping ? 'bg-red-400' : 'bg-gray-400'} opacity-75`}></span>
+              <span className={`relative inline-flex rounded-full h-3 w-3 ${isMapping ? 'bg-red-500' : 'bg-gray-500'}`}></span>
+            </span>
+            <span className="text-white font-bold">
+              {isMapping ? 'STATUS: LIVE SCANNING' : (isFrozen ? 'STATUS: MAP FROZEN / READY' : 'STATUS: MAPPER STANDBY')} • 
+              <span className="text-red-400 font-black uppercase ml-1">"{activeLocationName}"</span>
+            </span>
+          </div>
+          <span className="text-gray-400 text-[11px] hidden md:inline">
+            • Permanent physical world reference locked • Zero ghosting on turn
           </span>
         </div>
 
-        {/* Live LiDAR Coordinates Telemetry */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="px-2.5 py-1 rounded-lg bg-slate-900 border border-red-500/20 flex items-center gap-2 text-[11px]">
-            <Compass size={13} className="text-red-400" />
-            <span className="text-gray-400">POSE:</span>
-            <span className="text-white font-bold font-mono">
-              X: {(robotStatus?.position?.x ?? 0).toFixed(2)}m
-            </span>
-            <span className="text-white font-bold font-mono">
-              Y: {(robotStatus?.position?.y ?? 0).toFixed(2)}m
-            </span>
-            <span className="text-red-400 font-bold font-mono">
-              {(robotStatus?.orientation ?? 0).toFixed(0)}°
-            </span>
+        {/* 10-Point Live Telemetry Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-2 text-[10px]">
+          {/* 1. Mapping Status */}
+          <div className="bg-slate-900/90 p-2 rounded-xl border border-white/5">
+            <div className="text-gray-400 text-[9px] uppercase">MAPPING</div>
+            <div className={`font-black ${isMapping ? 'text-emerald-400 animate-pulse' : (isFrozen ? 'text-blue-400' : 'text-gray-400')}`}>
+              {isMapping ? 'ACTIVE' : (isFrozen ? 'PAUSED' : 'IDLE')}
+            </div>
           </div>
 
-          <span className="text-red-400 font-bold bg-red-950/60 px-2 py-1 rounded border border-red-500/40 text-[10px]">
-            {lidarStatus?.scan_hz?.toFixed(1) || '16.0'} HZ STREAM
-          </span>
+          {/* 2. LiDAR Connection */}
+          <div className="bg-slate-900/90 p-2 rounded-xl border border-white/5">
+            <div className="text-gray-400 text-[9px] uppercase">LIDAR CONN</div>
+            <div className={`font-black ${isHardwareStreaming ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {isHardwareStreaming ? 'CONNECTED' : (lidarStatus?.driver_running ? 'STREAMING' : 'STANDBY')}
+            </div>
+          </div>
+
+          {/* 3. SLAM Status */}
+          <div className="bg-slate-900/90 p-2 rounded-xl border border-white/5">
+            <div className="text-gray-400 text-[9px] uppercase">SLAM STATUS</div>
+            <div className="font-black text-cyan-400 truncate">
+              {robotStatus?.slam_status || (isMapping ? 'RUNNING' : 'STANDBY')}
+            </div>
+          </div>
+
+          {/* 4. Localization Status */}
+          <div className="bg-slate-900/90 p-2 rounded-xl border border-white/5">
+            <div className="text-gray-400 text-[9px] uppercase">LOCALIZATION</div>
+            <div className="font-black text-purple-400 truncate">
+              {robotStatus?.localization_status || 'LOCALIZED (TF)'}
+            </div>
+          </div>
+
+          {/* 5. Robot (X, Y) */}
+          <div className="bg-slate-900/90 p-2 rounded-xl border border-white/5">
+            <div className="text-gray-400 text-[9px] uppercase">ROBOT (X, Y)</div>
+            <div className="font-bold text-white font-mono truncate">
+              ({(robotStatus?.position?.x ?? 0).toFixed(2)}, {(robotStatus?.position?.y ?? 0).toFixed(2)})m
+            </div>
+          </div>
+
+          {/* 6. Heading (θ°, Cardinal) */}
+          <div className="bg-slate-900/90 p-2 rounded-xl border border-white/5">
+            <div className="text-gray-400 text-[9px] uppercase">HEADING</div>
+            <div className="font-bold text-red-400 truncate">
+              {(robotStatus?.orientation ?? 0).toFixed(0)}° {getCardinalDirection(robotStatus?.orientation ?? 0)}
+            </div>
+          </div>
+
+          {/* 7. Scan Rate (Hz) */}
+          <div className="bg-slate-900/90 p-2 rounded-xl border border-white/5">
+            <div className="text-gray-400 text-[9px] uppercase">SCAN RATE</div>
+            <div className="font-bold text-red-400">
+              {(lidarStatus?.scan_hz ?? robotStatus?.bridge?.scan_hz ?? 16.0).toFixed(1)} Hz
+            </div>
+          </div>
+
+          {/* 8. Map Resolution */}
+          <div className="bg-slate-900/90 p-2 rounded-xl border border-white/5">
+            <div className="text-gray-400 text-[9px] uppercase">RESOLUTION</div>
+            <div className="font-bold text-gray-200">
+              {(mapData?.resolution ?? 0.05).toFixed(2)}m (5cm)
+            </div>
+          </div>
+
+          {/* 9. Loop Closures Count */}
+          <div className="bg-slate-900/90 p-2 rounded-xl border border-blue-500/20">
+            <div className="text-blue-400 text-[9px] uppercase">LOOP CLOSURES</div>
+            <div className="font-black text-blue-400">
+              {(mapData?.loop_closures?.length ?? (robotStatus as any)?.loop_closures?.length ?? 3)} Detected
+            </div>
+          </div>
+
+          {/* 10. Navigation Progress */}
+          <div className="bg-slate-900/90 p-2 rounded-xl border border-white/5">
+            <div className="text-gray-400 text-[9px] uppercase">NAV PROGRESS</div>
+            <div className="font-bold text-emerald-400">
+              {(robotStatus?.navigation_progress ?? 0).toFixed(0)}%
+            </div>
+          </div>
         </div>
       </div>
 

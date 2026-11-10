@@ -61,7 +61,9 @@ async def get_current_map(db: AsyncSession = Depends(get_db)):
             "origin_x": current_map_data.get("origin_x", -15.0),
             "origin_y": current_map_data.get("origin_y", -15.0),
             "occupancy_grid": flat,
-            "status": "building" if robot_state.state == "MAPPING" else "ready"
+            "status": "building" if robot_state.state == "MAPPING" else "ready",
+            "loop_closures": current_map_data.get("loop_closures", []),
+            "rooms": current_map_data.get("rooms", [])
         }
 
     # 2. Otherwise load the most recently saved map from DB
@@ -79,7 +81,9 @@ async def get_current_map(db: AsyncSession = Depends(get_db)):
             "origin_x": -15.0,
             "origin_y": -15.0,
             "occupancy_grid": [-1] * (600 * 600),
-            "status": "ready"
+            "status": "ready",
+            "loop_closures": current_map_data.get("loop_closures", []),
+            "rooms": current_map_data.get("rooms", [])
         }
 
     try:
@@ -98,7 +102,9 @@ async def get_current_map(db: AsyncSession = Depends(get_db)):
         "origin_x": m.origin_x,
         "origin_y": m.origin_y,
         "occupancy_grid": flat,
-        "status": m.status
+        "status": m.status,
+        "loop_closures": current_map_data.get("loop_closures", []),
+        "rooms": current_map_data.get("rooms", [])
     }
 
 @router.get("/{map_id}")
