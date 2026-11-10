@@ -4,11 +4,12 @@ import {
   Scan, Play, Square, Trash2, Download, HardDrive, 
   Layers, RefreshCw, Cpu, AlertTriangle, ArrowUp, ArrowDown, 
   ArrowLeft, ArrowRight, PauseCircle, CheckCircle2, X, Compass, MapPin,
-  Snowflake, RotateCcw, FilePlus, Flag, Crosshair, Pause, Save, Gamepad2
+  Snowflake, RotateCcw, FilePlus, Flag, Crosshair, Pause, Save, Gamepad2, Video
 } from 'lucide-react';
 import { MapCanvas } from '../components/MapCanvas';
 import { LidarPolarView } from '../components/LidarPolarView';
 import { AutonomousNavigationPanel } from '../components/AutonomousNavigationPanel';
+import { SlamVideoGuide } from '../components/SlamVideoGuide';
 import { useRobotStatus } from '../hooks/useRobotStatus';
 import { useCarTrim } from '../context/CarTrimContext';
 import { 
@@ -40,6 +41,9 @@ export const Mapping = () => {
   // Freeze & Save As modal state
   const [showFreezeSaveModal, setShowFreezeSaveModal] = useState(false);
   const [saveAsName, setSaveAsName] = useState('Location 1');
+
+  // Video Guide modal state
+  const [showVideoGuideModal, setShowVideoGuideModal] = useState(false);
 
   // Check robot state
   useEffect(() => {
@@ -486,6 +490,37 @@ export const Mapping = () => {
         </div>
       )}
 
+      {/* Interactive 2D SLAM Video Guide Modal Dialog */}
+      {showVideoGuideModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="bg-slate-950 border border-red-500/50 rounded-3xl w-full max-w-5xl p-4 sm:p-6 relative shadow-[0_0_60px_rgba(239,68,68,0.35)] my-auto max-h-[95vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-red-500/20 mb-4 sticky top-0 bg-slate-950/90 backdrop-blur z-20">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-red-600/20 text-red-400 border border-red-500/40">
+                  <Video size={18} />
+                </span>
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-wider text-white">
+                    2D SLAM & Multi-Room Video Guide
+                  </h3>
+                  <p className="text-[11px] text-gray-400">
+                    Interactive tutorial: SLAM Toolbox, wall non-overlap, Flags 1–5, W/S/A/D controls & 5-step order
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowVideoGuideModal(false)}
+                className="p-2 text-gray-400 hover:text-white bg-slate-900 hover:bg-slate-800 rounded-full transition-colors border border-white/10"
+                title="Close Video Guide"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <SlamVideoGuide />
+          </div>
+        </div>
+      )}
+
       {/* 1. Top Supercar Title Banner */}
       <div className="glass-panel p-5 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="absolute inset-0 bg-carbon-pattern opacity-20 pointer-events-none" />
@@ -644,6 +679,16 @@ export const Mapping = () => {
             <Gamepad2 size={14} />
             <span className="hidden sm:inline">Play Pagani Sim</span>
           </Link>
+
+          {/* Launch Video Guide Modal */}
+          <button
+            onClick={() => setShowVideoGuideModal(true)}
+            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white font-mono text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-red-950/50 border border-red-400/40"
+            title="Open interactive SLAM, 2D mapping, and multi-room video guide"
+          >
+            <Video size={14} />
+            <span>Video Guide</span>
+          </button>
         </div>
       </div>
 
