@@ -38,7 +38,7 @@ if [ -f "/opt/ros/lyrical/setup.bash" ] || [ -f "/opt/ros/humble/setup.bash" ]; 
     pkill -f "async_slam_toolbox" 2>/dev/null || true
     pkill -f "lifecycle_manager_slam" 2>/dev/null || true
     sleep 0.5
-    nohup "$DIR/start_slam_bridge.sh" > "$DIR/slam_bridge.log" 2>&1 &
+    nohup "$DIR/start_slam_bridge.sh" "$@" > "$DIR/slam_bridge.log" 2>&1 &
     SLAM_PID=$!
     disown $SLAM_PID 2>/dev/null || true
     echo $SLAM_PID > "$DIR/.slam.pid"

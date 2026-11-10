@@ -536,7 +536,16 @@ async def ingest_bridge_scan(data: Dict[str, Any]):
                 "motor_controller": "READY" if (manager.robot_authenticated or simulator.is_running) else "STANDBY",
                 "udp_bridge": "STREAMING" if bridge_metrics["scans_published"] > 0 else "ONLINE"
             },
-            "bridge": bridge_metrics
+            "bridge": bridge_metrics,
+            "lidar": {
+                "active": True,
+                "status": "ACTIVE" if bridge_metrics["scans_published"] > 0 else "SYNCING",
+                "scan_rate": bridge_metrics["scan_hz"],
+                "points": len(points),
+                "range": 8.0,
+                "rays": points if points else [],
+                "packets": bridge_metrics["udp_packets_rx"]
+            }
         }
     })
 

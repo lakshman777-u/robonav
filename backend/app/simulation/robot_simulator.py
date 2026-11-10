@@ -484,6 +484,17 @@ class RobotSimulator:
                 "origin_y": self.origin_y,
                 "loop_closures": self.loop_closures,
                 "rooms": self.rooms,
+                "lidar": {
+                    "active": True,
+                    "scan_rate": 10,
+                    "points": len(self.lidar_rays),
+                    "range": 8.0,
+                    "rays": self.lidar_rays,
+                    "status": "ACTIVE"
+                },
+                "trajectory": [
+                    {"x": p[0], "y": p[1]} for p in (self.current_path[:20] if self.current_path else [])
+                ],
                 "hardware": {
                     "pc_server": "ONLINE",
                     "esp32": "ONLINE",
@@ -543,7 +554,9 @@ class RobotSimulator:
         msg = {
             "type": "map_update",
             "data": {
-                "cells": self.recent_map_updates,
+                "updates": self.recent_map_updates,
+                "width": self.grid_width,
+                "height": self.grid_height,
                 "coverage": coverage,
                 "origin_x": self.origin_x,
                 "origin_y": self.origin_y,
@@ -553,6 +566,7 @@ class RobotSimulator:
         }
         await manager.broadcast_to_browsers(msg)
         self.recent_map_updates = []
+
 
     async def _send_event(self, event_type: str, data: dict):
         msg = {
