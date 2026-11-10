@@ -57,7 +57,8 @@ def generate_launch_description():
             output="screen",
             parameters=[{
                 "autostart": True,
-                "node_names": ["slam_toolbox"]
+                "node_names": ["slam_toolbox"],
+                "bond_timeout": 0.0
             }]
         )
     ]

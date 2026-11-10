@@ -1,4 +1,6 @@
 import asyncio
+import math
+import time
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -188,6 +190,17 @@ async def read_robot_status(robot_id: Optional[str] = None, current_user: Option
         "udp_bridge": "STREAMING" if (is_bridge_active and bridge_metrics["scans_published"] > 0) else ("ONLINE" if is_bridge_active else "IDLE")
     }
     status["bridge"] = bridge_metrics
+    status["lidar"] = {
+        "status": "ACTIVE" if ((is_bridge_active and bridge_metrics["scans_published"] > 0) or simulator.is_running) else "INACTIVE",
+        "active": ((is_bridge_active and bridge_metrics["scans_published"] > 0) or simulator.is_running),
+        "hz": bridge_metrics["scan_hz"] if is_bridge_active else (10.0 if simulator.is_running else 0.0),
+        "scan_rate": bridge_metrics["scan_hz"] if is_bridge_active else (10.0 if simulator.is_running else 0.0),
+        "rays": latest_lidar_rays if latest_lidar_rays else simulator.lidar_rays,
+        "points": len(latest_lidar_rays) if latest_lidar_rays else len(simulator.lidar_rays),
+        "port": "/dev/ttyUSB0",
+        "packets": bridge_metrics["udp_packets_rx"],
+        "bytes_rx": bridge_metrics["udp_bytes_rx"]
+    }
     return status
 
 # Telemetry endpoint

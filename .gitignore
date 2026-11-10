@@ -19,6 +19,7 @@ __pycache__/
 *.log
 .backend.pid
 .frontend.pid
+.slam.pid
 
 # IDE & OS files
 .vscode/

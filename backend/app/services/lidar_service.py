@@ -51,7 +51,7 @@ def start_driver(mock: bool = False, port: Optional[str] = None) -> Dict[str, An
     if not os.path.exists(driver_script):
         return {"status": "error", "message": f"Driver script not found at {driver_script}"}
 
-    cmd = ["python3", driver_script]
+    cmd = ["python3", driver_script, "--motor-facing-north"]
     if mock or (not detected_port):
         cmd.append("--mock")
     elif detected_port:
