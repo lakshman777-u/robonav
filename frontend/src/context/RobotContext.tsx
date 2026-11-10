@@ -133,6 +133,8 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
       wifi: td.wifi || prev?.wifi,
       oled_expression: td.oled_expression || prev?.oled_expression,
       motors: td.motors || prev?.motors,
+      localization_status: td.localization_status || prev?.localization_status || 'LOCALIZED',
+      slam_status: td.slam_status || prev?.slam_status || 'SLAM_ACTIVE',
     }));
 
     if (td.lidar || td.ultrasonic || td.camera || td.mpu9250) {
@@ -233,6 +235,20 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
+    // 3b. Authoritative SLAM Pose from SLAM Toolbox (map -> base_link)
+    const onSlamPose = (msg: any) => {
+      if (msg.data) {
+        setRobotStatus(prev => prev ? {
+          ...prev,
+          position: msg.data.position || prev.position,
+          orientation: msg.data.orientation ?? prev.orientation,
+          trajectory: msg.data.trajectory || prev.trajectory,
+          localization_status: msg.data.localized ? 'LOCALIZED' : 'SEARCHING',
+          slam_status: msg.data.status || 'SLAM_ACTIVE'
+        } : null);
+      }
+    };
+
     // 4. Incoming Command Events from Laptop, ROS 2, or Other Clients
     const onIncomingCommand = (msg: any) => {
       const cmdName = msg.command || msg.action || msg.data?.command;
@@ -329,6 +345,7 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
     wsService.onMessage('navigation_status', onNavigationStatus);
     wsService.onMessage('emergency_stop', onEmergencyStopTriggered);
     wsService.onMessage('destination_update', fetchDestinations);
+    wsService.onMessage('slam_pose', onSlamPose);
 
     // 6. Window CustomEvent Listener for Local Laptop Commands
     // Allows scripts, DevTools console, or tests to dispatch commands:
@@ -415,6 +432,7 @@ export const RobotProvider = ({ children }: { children: ReactNode }) => {
       wsService.offMessage('navigation_status', onNavigationStatus);
       wsService.offMessage('emergency_stop', onEmergencyStopTriggered);
       wsService.offMessage('destination_update', fetchDestinations);
+      wsService.offMessage('slam_pose', onSlamPose);
       window.removeEventListener('robonav:command', handleWindowEvent);
       if (broadcastChannelRef.current) {
         broadcastChannelRef.current.close();

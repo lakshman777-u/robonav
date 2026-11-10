@@ -56,6 +56,8 @@ export interface RobotStatus {
   navigation_status?: string;
   hardware_config?: any;
   lidar?: any;
+  localization_status?: string;
+  slam_status?: string;
   wifi?: string;
   motors?: {
     state: string;

@@ -126,7 +126,15 @@ else:
 
 
 class YdlidarDirectNode(BaseNode):
-    def __init__(self, port=DEFAULT_SERIAL_PORT, baud=LIDAR_BAUD_RATE, is_mock=False):
+    def __init__(self, port=DEFAULT_SERIAL_PORT, baud=LIDAR_BAUD_RATE, is_mock=False, motor_facing_north=True, yaw_offset_deg=0.0):
+        self.port = port
+        self.baud = baud
+        self.is_mock = is_mock
+        self.motor_facing_north = motor_facing_north
+        self.yaw_offset_deg = yaw_offset_deg
+        self.accumulator = LidarScanAccumulator(NUM_SCAN_BINS)
+        self.running = True
+
         if ROS2_AVAILABLE:
             super().__init__("ydlidar_direct_driver")
             self.scan_pub = self.create_publisher(LaserScan, "/scan", 10)
@@ -138,12 +146,6 @@ class YdlidarDirectNode(BaseNode):
         else:
             self.scan_pub = None
             self.tf_broadcaster = None
-
-        self.port = port
-        self.baud = baud
-        self.is_mock = is_mock
-        self.accumulator = LidarScanAccumulator(NUM_SCAN_BINS)
-        self.running = True
 
         self.ser = None
         self.total_bytes_rx = 0
@@ -170,7 +172,13 @@ class YdlidarDirectNode(BaseNode):
         t.transform.translation.x = 0.08  # Mounted 8cm forward of chassis center
         t.transform.translation.y = 0.0
         t.transform.translation.z = 0.12  # Mounted 12cm above ground
-        t.transform.rotation.w = 1.0
+
+        # YDLIDAR X2 orientation with motor facing North (+X_body)
+        yaw_rad = math.radians(getattr(self, "yaw_offset_deg", 0.0))
+        t.transform.rotation.x = 0.0
+        t.transform.rotation.y = 0.0
+        t.transform.rotation.z = math.sin(yaw_rad / 2.0)
+        t.transform.rotation.w = math.cos(yaw_rad / 2.0)
         self.tf_broadcaster.sendTransform(t)
 
 
@@ -475,19 +483,33 @@ class YdlidarDirectNode(BaseNode):
 
 def main(args=None):
     port = DEFAULT_SERIAL_PORT
+    yaw_offset = 0.0
+    motor_north = True
     for i, a in enumerate(sys.argv):
         if a == "--port" and i + 1 < len(sys.argv):
             port = sys.argv[i + 1]
+        elif a == "--yaw-offset" and i + 1 < len(sys.argv):
+            try:
+                yaw_offset = float(sys.argv[i + 1])
+            except ValueError:
+                pass
+        elif a in ["--motor-facing-north", "--motor-north"]:
+            motor_north = True
 
     is_mock = ("--mock" in sys.argv or "--demo" in sys.argv)
 
     if ROS2_AVAILABLE:
         try:
             rclpy.init(args=args)
-            driver = YdlidarDirectNode(port=port, is_mock=is_mock)
+            driver = YdlidarDirectNode(
+                port=port, 
+                is_mock=is_mock, 
+                motor_facing_north=motor_north, 
+                yaw_offset_deg=yaw_offset
+            )
             worker = threading.Thread(target=driver.run_mock_loop if is_mock else driver.run, daemon=True)
             worker.start()
-            print("[ROS 2] Initialized node 'ydlidar_direct_driver' publishing on /scan")
+            print(f"[ROS 2] Initialized node 'ydlidar_direct_driver' on /scan (Motor Facing North: {motor_north}, Yaw Offset: {yaw_offset}°)")
             try:
                 rclpy.spin(driver)
             except (KeyboardInterrupt, Exception):
@@ -505,7 +527,12 @@ def main(args=None):
                 pass
 
     else:
-        driver = YdlidarDirectNode(port=port, is_mock=is_mock)
+        driver = YdlidarDirectNode(
+            port=port, 
+            is_mock=is_mock, 
+            motor_facing_north=motor_north, 
+            yaw_offset_deg=yaw_offset
+        )
         if is_mock:
             driver.run_mock_loop()
         else:

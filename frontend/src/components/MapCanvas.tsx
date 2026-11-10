@@ -1,4 +1,4 @@
-import { useRef, useEffect, MouseEvent } from 'react';
+import { useRef, useEffect, useState, MouseEvent } from 'react';
 import { useMap } from '../hooks/useMap';
 import { useRobotStatus } from '../hooks/useRobotStatus';
 import { useCarTrim } from '../context/CarTrimContext';
@@ -7,9 +7,10 @@ import {
   canvasToWorld, drawLiveLidarHits, drawMetricGuides,
   drawTrajectoryTrail
 } from '../utils/mapRenderer';
+import { Navigation3DView } from './Navigation3DView';
 import { createDestination } from '../services/api';
 import toast from 'react-hot-toast';
-import { Crosshair, ZoomIn, ZoomOut, RotateCcw, Scan, Compass, Flag, X } from 'lucide-react';
+import { Crosshair, ZoomIn, ZoomOut, RotateCcw, Scan, Layers, Flag, X, Box } from 'lucide-react';
 
 interface MapCanvasProps {
   flagPlacementMode?: number | null;
@@ -18,6 +19,7 @@ interface MapCanvasProps {
 }
 
 export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlagPlacement }: MapCanvasProps) => {
+  const [viewMode, setViewMode] = useState<'2D' | '3D'>('2D');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animPoseRef = useRef({ x: 0.0, y: 0.0, heading: 0.0, initialized: false });
   const { 
@@ -61,6 +63,7 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
   }, []);
 
   useEffect(() => {
+    if (viewMode !== '2D') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -81,11 +84,11 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Deep dark floor background
-      ctx.fillStyle = '#030712';
+      // Deep dark floor background (Obsidian #06080e)
+      ctx.fillStyle = '#06080e';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Smooth slider interpolation (0.18 per frame) for fluid gliding animation
+      // Smooth anti-shaking filter with deadband
       const targetX = curRobot?.position?.x ?? 0.0;
       const targetY = curRobot?.position?.y ?? 0.0;
       const targetHeading = curRobot?.orientation ?? 0.0;
@@ -93,19 +96,25 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
       if (!animPoseRef.current.initialized) {
         animPoseRef.current = { x: targetX, y: targetY, heading: targetHeading, initialized: true };
       } else {
-        animPoseRef.current.x += (targetX - animPoseRef.current.x) * 0.18;
-        animPoseRef.current.y += (targetY - animPoseRef.current.y) * 0.18;
+        const dx = targetX - animPoseRef.current.x;
+        const dy = targetY - animPoseRef.current.y;
+        if (Math.abs(dx) > 0.003 || Math.abs(dy) > 0.003) {
+          animPoseRef.current.x += dx * 0.16;
+          animPoseRef.current.y += dy * 0.16;
+        }
 
         let dHeading = (targetHeading - animPoseRef.current.heading + 180) % 360 - 180;
         if (dHeading < -180) dHeading += 360;
-        animPoseRef.current.heading = (animPoseRef.current.heading + dHeading * 0.18 + 360) % 360;
+        if (Math.abs(dHeading) > 0.2) {
+          animPoseRef.current.heading = (animPoseRef.current.heading + dHeading * 0.16 + 360) % 360;
+        }
       }
 
       const smoothX = animPoseRef.current.x;
       const smoothY = animPoseRef.current.y;
       const smoothHeading = animPoseRef.current.heading;
 
-      // 1. Draw Metric 1-meter distance grid lines
+      // 1. Draw Metric 1-meter distance grid lines (Subtle Red Grid)
       drawMetricGuides(ctx, canvas.width, canvas.height, curScale, curOffset);
 
       // 2. Draw 2D SLAM Occupancy Grid if available (using 0.02ms hardware offscreen canvas)
@@ -115,14 +124,14 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
         // Subtle background grid radar guides
         const cx = canvas.width / 2;
         const cy = canvas.height / 2;
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.08)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.arc(cx, cy, 140, 0, Math.PI * 2);
         ctx.arc(cx, cy, 280, 0, Math.PI * 2);
         ctx.stroke();
 
-        ctx.strokeStyle = 'rgba(6, 182, 212, 0.15)';
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.18)';
         ctx.beginPath();
         ctx.moveTo(cx - 300, cy);
         ctx.lineTo(cx + 300, cy);
@@ -131,13 +140,13 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
         ctx.stroke();
       }
 
-      // 3. Draw real-time travel trajectory breadcrumb trail
+      // 3. Draw real-time travel trajectory breadcrumb trail (Dark Crimson)
       if (curRobot?.trajectory && curRobot.trajectory.length > 1) {
         drawTrajectoryTrail(ctx, curRobot.trajectory, curScale, curOffset);
       }
 
       // 4. Draw Live LiDAR bounce-backed reflection dots for the current frame
-      // When the robot moves from Point A to Point B, the dots shift continuously and never remain behind!
+      // Bright neon red points shift dynamically with robot pose and never burn into the map!
       const currentRays = curSensor?.lidar?.rays || (curRobot as any)?.lidar?.rays || [];
       if (currentRays.length > 0) {
         drawLiveLidarHits(
@@ -151,7 +160,7 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
         );
       }
 
-      // 5. Draw planned autonomous navigation path
+      // 5. Draw planned autonomous navigation path (High-Tech Red Ribbon)
       if (curNav) {
         drawPath(ctx, curNav, curScale, curOffset);
       }
@@ -161,7 +170,7 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
         drawRoomFlags(ctx, curDests, curScale, curOffset);
       }
 
-      // 7. Draw robot chassis, wheels, heading arrow, and LiDAR turret with smooth pose
+      // 7. Draw robot chassis, wheels, forward heading pointer, and LiDAR turret (Motor Facing North)
       if (curRobot) {
         drawRobot(ctx, smoothX, smoothY, smoothHeading, curScale, curOffset);
       }
@@ -171,7 +180,7 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
 
     render();
     return () => cancelAnimationFrame(animationFrameId);
-  }, []);
+  }, [viewMode]);
 
   const onCanvasClick = (e: MouseEvent<HTMLCanvasElement>) => {
     if (!flagPlacementMode || !onFlagPlaced) return;
@@ -208,20 +217,22 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
   };
 
   return (
-    <div className="w-full h-full relative overflow-hidden bg-slate-950 rounded-3xl border border-white/10 shadow-2xl">
-      {/* Top Left HUD Telemetry Overlay */}
-      <div className="absolute top-4 left-4 z-10 flex flex-wrap items-center gap-2 pointer-events-none">
-        <div className="px-3.5 py-1.5 rounded-xl bg-slate-950/90 backdrop-blur-md border border-cyan-500/30 flex items-center gap-2 text-xs font-mono shadow-xl">
-          <Scan size={15} style={{ color: config.primaryColor }} />
-          <span className="font-bold text-white tracking-wider">2D ROOM OCCUPANCY SLAM</span>
-          <span className="text-[10px] text-cyan-400">| 0.05m RES</span>
+    <div className="w-full h-full relative overflow-hidden bg-slate-950 rounded-3xl border border-red-500/20 shadow-2xl">
+      {/* Top Left HUD Telemetry Overlay (Cockpit Style) */}
+      <div className="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 pointer-events-none">
+        <div className="px-3.5 py-1.5 rounded-xl bg-slate-950/90 backdrop-blur-md border border-red-500/40 flex items-center gap-2 text-xs font-mono shadow-xl">
+          <Scan size={15} className="text-red-400" />
+          <span className="font-bold text-white tracking-wider">
+            {viewMode === '2D' ? '2D ROOM OCCUPANCY SLAM' : '3D NAVIGATION COCKPIT'}
+          </span>
+          <span className="text-[10px] text-red-400 font-bold">| 0.05m RES</span>
         </div>
 
-        {/* Live LiDAR Signal Stream Status Badge */}
+        {/* Live LiDAR Stream Status Badge */}
         <div className="px-3 py-1.5 rounded-xl bg-slate-950/90 backdrop-blur-md border border-white/10 flex items-center gap-2 text-[10px] font-mono shadow-xl">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-          <span className="text-gray-300 font-bold">LIDAR:</span>
-          <span className="text-cyan-400 font-bold">
+          <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+          <span className="text-gray-400 font-bold">LIDAR:</span>
+          <span className="text-red-400 font-bold">
             {(sensorData?.lidar?.scan_rate ?? robotStatus?.bridge?.scan_hz ?? 9.3).toFixed(1)} Hz
           </span>
           <span className="text-gray-400">
@@ -230,51 +241,82 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
         </div>
       </div>
 
-      {/* Top Right Zoom & Pan HUD Tools */}
-      <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5">
-        <div className="px-3 py-1.5 rounded-xl bg-slate-950/90 backdrop-blur-md border border-white/10 text-[11px] font-mono text-gray-300 shadow-xl flex items-center gap-2">
-          <span>ZOOM: {Math.round(scale * 100)}%</span>
-        </div>
-
+      {/* Top Center: MODE A (2D SLAM) vs MODE B (3D VIEW) Switcher */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center p-1 rounded-2xl bg-slate-950/95 backdrop-blur-md border border-red-500/30 shadow-2xl gap-1">
         <button
-          onClick={zoomIn}
-          className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-gray-300 hover:text-cyan-400 border border-white/10 transition-colors shadow-lg"
-          title="Zoom In"
+          onClick={() => setViewMode('2D')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-black tracking-wider flex items-center gap-1.5 transition-all ${
+            viewMode === '2D'
+              ? 'bg-red-600 text-white shadow-[0_0_20px_rgba(239,68,68,0.6)]'
+              : 'text-gray-400 hover:text-white hover:bg-slate-900'
+          }`}
+          title="Switch to 2D Live SLAM Map"
         >
-          <ZoomIn size={15} />
+          <Scan size={14} />
+          <span>MODE A: 2D SLAM</span>
         </button>
 
         <button
-          onClick={zoomOut}
-          className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-gray-300 hover:text-cyan-400 border border-white/10 transition-colors shadow-lg"
-          title="Zoom Out"
+          onClick={() => setViewMode('3D')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-black tracking-wider flex items-center gap-1.5 transition-all ${
+            viewMode === '3D'
+              ? 'bg-red-600 text-white shadow-[0_0_20px_rgba(239,68,68,0.6)]'
+              : 'text-gray-400 hover:text-white hover:bg-slate-900'
+          }`}
+          title="Switch to 3D Navigation View"
         >
-          <ZoomOut size={15} />
-        </button>
-
-        <button
-          onClick={() => centerOnRobot(rx, ry, 900, 650)}
-          className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-gray-300 hover:text-cyan-400 border border-white/10 transition-colors shadow-lg"
-          title="Center on Robot"
-        >
-          <Crosshair size={15} />
-        </button>
-
-        <button
-          onClick={() => resetView(900, 650)}
-          className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-gray-300 hover:text-cyan-400 border border-white/10 transition-colors shadow-lg"
-          title="Reset Room View"
-        >
-          <RotateCcw size={15} />
+          <Box size={14} />
+          <span>MODE B: 3D VIEW</span>
         </button>
       </div>
 
+      {/* Top Right Zoom & Pan HUD Tools (2D Mode only) */}
+      {viewMode === '2D' && (
+        <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5">
+          <div className="px-3 py-1.5 rounded-xl bg-slate-950/90 backdrop-blur-md border border-white/10 text-[11px] font-mono text-gray-300 shadow-xl flex items-center gap-2">
+            <span>ZOOM: {Math.round(scale * 100)}%</span>
+          </div>
+
+          <button
+            onClick={zoomIn}
+            className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-gray-300 hover:text-red-400 border border-white/10 transition-colors shadow-lg"
+            title="Zoom In"
+          >
+            <ZoomIn size={15} />
+          </button>
+
+          <button
+            onClick={zoomOut}
+            className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-gray-300 hover:text-red-400 border border-white/10 transition-colors shadow-lg"
+            title="Zoom Out"
+          >
+            <ZoomOut size={15} />
+          </button>
+
+          <button
+            onClick={() => centerOnRobot(rx, ry, 900, 650)}
+            className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-gray-300 hover:text-red-400 border border-white/10 transition-colors shadow-lg"
+            title="Center on Robot"
+          >
+            <Crosshair size={15} />
+          </button>
+
+          <button
+            onClick={() => resetView(900, 650)}
+            className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-gray-300 hover:text-red-400 border border-white/10 transition-colors shadow-lg"
+            title="Reset Room View"
+          >
+            <RotateCcw size={15} />
+          </button>
+        </div>
+      )}
+
       {/* Flag Placement Active Mode HUD Banner */}
       {flagPlacementMode && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-slate-950/95 border border-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.4)] animate-pulse font-mono">
-          <Flag size={18} className="text-cyan-400" />
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-slate-950/95 border border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.5)] animate-pulse font-mono">
+          <Flag size={18} className="text-red-400" />
           <span className="text-xs font-bold text-white uppercase tracking-wider">
-            Click anywhere on 2D map to fix <span className="text-cyan-300 font-black">Flag {flagPlacementMode} (Room {flagPlacementMode})</span>
+            Click anywhere on map to fix <span className="text-red-300 font-black">Flag {flagPlacementMode} (Room {flagPlacementMode})</span>
           </span>
           {onCancelFlagPlacement && (
             <button
@@ -288,29 +330,42 @@ export const MapCanvas = ({ flagPlacementMode = null, onFlagPlaced, onCancelFlag
         </div>
       )}
 
-      {/* Bottom Left Double Click Hint */}
-      <div className="absolute bottom-4 left-4 z-10 pointer-events-none">
-        <div className="px-3 py-1 rounded-lg bg-slate-950/80 backdrop-blur-sm border border-white/5 text-[10px] font-mono text-gray-400">
-          {flagPlacementMode 
-            ? `AIMING: Click on map to place Flag ${flagPlacementMode}` 
-            : 'TIP: Double-click to set goal • Drag to pan • Scroll to zoom'}
-        </div>
-      </div>
+      {/* View Mode Switching Body */}
+      {viewMode === '3D' ? (
+        <Navigation3DView
+          mapData={mapData}
+          robotStatus={robotStatus}
+          sensorData={sensorData}
+          destinations={destinations}
+          navigationPath={navigationPath}
+        />
+      ) : (
+        <>
+          {/* Bottom Left Double Click Hint */}
+          <div className="absolute bottom-4 left-4 z-10 pointer-events-none">
+            <div className="px-3 py-1 rounded-lg bg-slate-950/80 backdrop-blur-sm border border-red-500/10 text-[10px] font-mono text-gray-400">
+              {flagPlacementMode 
+                ? `AIMING: Click on map to place Flag ${flagPlacementMode}` 
+                : 'TIP: Double-click to set goal • Drag to pan • Scroll to zoom'}
+            </div>
+          </div>
 
-      {/* Main High-Performance Canvas */}
-      <canvas
-        ref={canvasRef}
-        width={900}
-        height={650}
-        className={`w-full h-full ${flagPlacementMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`}
-        onWheel={handleWheel}
-        onClick={onCanvasClick}
-        onMouseDown={flagPlacementMode ? undefined : handleMouseDown}
-        onMouseMove={flagPlacementMode ? undefined : handleMouseMove}
-        onMouseUp={flagPlacementMode ? undefined : handleMouseUp}
-        onMouseLeave={flagPlacementMode ? undefined : handleMouseUp}
-        onDoubleClick={onCanvasDoubleClick}
-      />
+          {/* Main High-Performance 2D Canvas */}
+          <canvas
+            ref={canvasRef}
+            width={900}
+            height={650}
+            className={`w-full h-full ${flagPlacementMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`}
+            onWheel={handleWheel}
+            onClick={onCanvasClick}
+            onMouseDown={flagPlacementMode ? undefined : handleMouseDown}
+            onMouseMove={flagPlacementMode ? undefined : handleMouseMove}
+            onMouseUp={flagPlacementMode ? undefined : handleMouseUp}
+            onMouseLeave={flagPlacementMode ? undefined : handleMouseUp}
+            onDoubleClick={onCanvasDoubleClick}
+          />
+        </>
+      )}
     </div>
   );
 };

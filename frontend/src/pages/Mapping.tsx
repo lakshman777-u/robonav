@@ -603,38 +603,38 @@ export const Mapping = () => {
       </div>
 
       {/* Live Mapping / Odometry Status Banner */}
-      <div className="glass-panel p-3.5 rounded-2xl border border-cyan-500/30 bg-slate-950/80 shadow-[0_0_20px_rgba(6,182,212,0.1)] flex flex-col md:flex-row items-center justify-between gap-3 text-xs font-mono">
+      <div className="glass-panel p-3.5 rounded-2xl border border-red-500/30 bg-slate-950/80 shadow-[0_0_20px_rgba(239,68,68,0.15)] flex flex-col md:flex-row items-center justify-between gap-3 text-xs font-mono">
         <div className="flex items-center gap-3 flex-wrap">
           <span className="relative flex h-3 w-3">
-            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isMapping ? 'bg-cyan-400' : 'bg-gray-400'} opacity-75`}></span>
-            <span className={`relative inline-flex rounded-full h-3 w-3 ${isMapping ? 'bg-cyan-500' : 'bg-gray-500'}`}></span>
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isMapping ? 'bg-red-400' : 'bg-gray-400'} opacity-75`}></span>
+            <span className={`relative inline-flex rounded-full h-3 w-3 ${isMapping ? 'bg-red-500' : 'bg-gray-500'}`}></span>
           </span>
           <span className="text-white font-bold">
             {isMapping ? 'LIVE 2D SCANNING:' : (isFrozen ? 'MAP FROZEN & SAVED:' : 'MAPPER STANDBY:')}{' '}
-            <span className="text-cyan-300 font-black uppercase">"{activeLocationName}"</span>
+            <span className="text-red-400 font-black uppercase">"{activeLocationName}"</span>
           </span>
           <span className="text-gray-400 text-[11px] hidden lg:inline">
-            • Odometry tracks LiDAR location wall-to-wall as you travel between rooms
+            • Odometry tracks LiDAR location wall-to-wall with motor facing North (+X body)
           </span>
         </div>
 
         {/* Live LiDAR Coordinates Telemetry */}
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="px-2.5 py-1 rounded-lg bg-slate-900 border border-white/10 flex items-center gap-2 text-[11px]">
-            <Compass size={13} className="text-cyan-400" />
+          <div className="px-2.5 py-1 rounded-lg bg-slate-900 border border-red-500/20 flex items-center gap-2 text-[11px]">
+            <Compass size={13} className="text-red-400" />
             <span className="text-gray-400">POSE:</span>
-            <span className="text-cyan-300 font-bold font-mono">
+            <span className="text-white font-bold font-mono">
               X: {(robotStatus?.position?.x ?? 0).toFixed(2)}m
             </span>
-            <span className="text-cyan-300 font-bold font-mono">
+            <span className="text-white font-bold font-mono">
               Y: {(robotStatus?.position?.y ?? 0).toFixed(2)}m
             </span>
-            <span className="text-cyan-300 font-bold font-mono">
+            <span className="text-red-400 font-bold font-mono">
               {(robotStatus?.orientation ?? 0).toFixed(0)}°
             </span>
           </div>
 
-          <span className="text-emerald-400 font-bold bg-emerald-950/60 px-2 py-1 rounded border border-emerald-500/40 text-[10px]">
+          <span className="text-red-400 font-bold bg-red-950/60 px-2 py-1 rounded border border-red-500/40 text-[10px]">
             {lidarStatus?.scan_hz?.toFixed(1) || '16.0'} HZ STREAM
           </span>
         </div>

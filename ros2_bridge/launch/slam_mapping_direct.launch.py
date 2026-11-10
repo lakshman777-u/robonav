@@ -19,7 +19,9 @@ def generate_launch_description():
     movement_bridge_script = os.path.join(bridge_dir, "ros2_to_esp32_bridge.py")
 
     is_mock = ("--mock" in sys.argv or "--demo" in sys.argv)
-    lidar_cmd = ["python3", lidar_driver_script, "--mock"] if is_mock else ["python3", lidar_driver_script]
+    lidar_cmd = ["python3", lidar_driver_script, "--motor-facing-north"]
+    if is_mock:
+        lidar_cmd.append("--mock")
 
     has_display = bool(os.environ.get("DISPLAY")) and ("--no-rviz" not in sys.argv)
 

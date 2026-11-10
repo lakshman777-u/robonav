@@ -226,6 +226,12 @@ def process_lidar_points(points: list, position: dict, orientation: float):
     global current_map_data, accumulated_updates, last_map_broadcast, last_auto_save
     from app.services.robot_service import robot_state
 
+    # When ROS 2 SLAM Toolbox is authoritative, do not accumulate raw points to prevent duplicate overlapping walls
+    from app.api.robot import bridge_metrics
+    is_ros2_slam_active = current_map_data.get("name") == "ROS 2 SLAM Toolbox Map" or (time.time() - bridge_metrics["last_seen"] < 5.0)
+    if is_ros2_slam_active:
+        return
+
     # Only accumulate permanent walls into the SLAM map when actively in MAPPING state
     if robot_state.state != "MAPPING":
         return

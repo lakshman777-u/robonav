@@ -128,11 +128,13 @@ async def robot_websocket_endpoint(websocket: WebSocket, token: str = ""):
                     }
                 })
                 
-                # Process LiDAR points into 2D SLAM grid
+                # Store live LiDAR points solely for real-time visualization layer
                 if "points" in t_data or "lidar_points" in t_data:
                     pts = t_data.get("points") or t_data.get("lidar_points")
                     if pts:
-                        process_lidar_points(pts, robot_state.position, robot_state.orientation)
+                        from app.api.robot import latest_lidar_rays
+                        import app.api.robot
+                        app.api.robot.latest_lidar_rays = pts
 
                 # Broadcast real sensor data
                 await manager.broadcast_to_browsers({
@@ -153,7 +155,8 @@ async def robot_websocket_endpoint(websocket: WebSocket, token: str = ""):
             elif msg_type in ["sensor_data", "lidar_scan"]:
                 pts = message.get("points") or message.get("data", {}).get("points")
                 if pts:
-                    process_lidar_points(pts, robot_state.position, robot_state.orientation)
+                    import app.api.robot
+                    app.api.robot.latest_lidar_rays = pts
                 await manager.broadcast_to_browsers(message)
                 
             elif msg_type == "map_update":

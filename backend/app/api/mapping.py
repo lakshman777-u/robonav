@@ -249,6 +249,7 @@ async def sync_ros2_map(req: Ros2MapSyncReq):
     current_map_data["origin_y"] = req.origin_y
     grid_2d = [req.data[i * req.width:(i + 1) * req.width] for i in range(req.height)]
     current_map_data["grid"] = grid_2d
+    current_map_data["occupancy_grid"] = req.data
     current_map_data["real_points_mapped"] = sum(1 for val in req.data if val == 100)
 
     await manager.broadcast_to_browsers({

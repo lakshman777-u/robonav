@@ -22,7 +22,8 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist, TransformStamped, PoseStamped
 from nav_msgs.msg import Odometry, OccupancyGrid
 from sensor_msgs.msg import Range
-from tf2_ros import TransformBroadcaster
+from tf2_ros import TransformBroadcaster, Buffer, TransformListener
+from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 
 # Try importing TwistStamped for ROS 2 distributions using stamped cmd_vel
 try:
@@ -94,6 +95,16 @@ class Ros2ToEsp32Bridge(Node):
             1
         )
 
+        # 6. TF Buffer & Listener for True SLAM Robot Pose (map -> base_link)
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.pose_sync_url = "http://127.0.0.1:8000/api/robot/pose"
+        self.last_pose_sync_time = 0.0
+        self.slam_localized = False
+        self.slam_pose_x = 0.0
+        self.slam_pose_y = 0.0
+        self.slam_pose_yaw = 0.0
+
         # Current Robot Pose for Open-Loop Odometry
         self.x = 0.0
         self.y = 0.0
@@ -104,6 +115,9 @@ class Ros2ToEsp32Bridge(Node):
 
         # Timer for odometry update loop (20 Hz)
         self.create_timer(0.05, self.update_and_publish_odometry)
+
+        # Timer for SLAM pose polling and sync (20 Hz)
+        self.create_timer(0.05, self.poll_and_sync_slam_pose)
 
         # Timer for checking pending Nav2 goals from web dashboard (1 Hz)
         self.create_timer(1.0, self.check_navigation_goal)
@@ -274,6 +288,88 @@ class Ros2ToEsp32Bridge(Node):
                 msg.max_range = 4.00
                 msg.range = dist_m
                 self.range_pub.publish(msg)
+        except Exception:
+            pass
+
+    def poll_and_sync_slam_pose(self):
+        """
+        Queries TF tree for map -> base_link (authoritative SLAM pose).
+        When available, synchronizes true robot coordinates with FastAPI and web clients.
+        """
+        now_time = time.time()
+        try:
+            # Query the latest available transform from map to base_link
+            t = self.tf_buffer.lookup_transform(
+                "map", 
+                "base_link", 
+                rclpy.time.Time()
+            )
+
+            tx = t.transform.translation.x
+            ty = t.transform.translation.y
+            rx = t.transform.rotation.x
+            ry = t.transform.rotation.y
+            rz = t.transform.rotation.z
+            rw = t.transform.rotation.w
+
+            # Compute Euler yaw from quaternion
+            siny_cosp = 2.0 * (rw * rz + rx * ry)
+            cosy_cosp = 1.0 - 2.0 * (ry * ry + rz * rz)
+            yaw_rad = math.atan2(siny_cosp, cosy_cosp)
+            yaw_deg = (math.degrees(yaw_rad) % 360.0 + 360.0) % 360.0
+
+            self.slam_localized = True
+            self.slam_pose_x = tx
+            self.slam_pose_y = ty
+            self.slam_pose_yaw = yaw_deg
+
+            # Keep internal open-loop reference aligned with true SLAM pose to prevent divergence
+            self.x = tx
+            self.y = ty
+            self.th = yaw_rad
+
+            # Throttle pose forwarding to 10 Hz
+            if now_time - self.last_pose_sync_time >= 0.10:
+                self.last_pose_sync_time = now_time
+                payload = {
+                    "x": round(float(tx), 4),
+                    "y": round(float(ty), 4),
+                    "orientation": round(float(yaw_deg), 2),
+                    "localized": True,
+                    "frame_id": "map",
+                    "status": "SLAM_ACTIVE",
+                    "timestamp": now_time
+                }
+                req = url_request.Request(
+                    self.pose_sync_url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json", "User-Agent": "ROS2Bridge"}
+                )
+                url_request.urlopen(req, timeout=0.2)
+
+        except (LookupException, ConnectivityException, ExtrapolationException):
+            # SLAM is initializing or transform temporarily unavailable
+            self.slam_localized = False
+            if now_time - self.last_pose_sync_time >= 1.0:
+                self.last_pose_sync_time = now_time
+                payload = {
+                    "x": round(float(self.x), 4),
+                    "y": round(float(self.y), 4),
+                    "orientation": round(float((math.degrees(self.th) % 360.0 + 360.0) % 360.0), 2),
+                    "localized": False,
+                    "frame_id": "odom",
+                    "status": "WAITING_FOR_SLAM_TF",
+                    "timestamp": now_time
+                }
+                try:
+                    req = url_request.Request(
+                        self.pose_sync_url,
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json", "User-Agent": "ROS2Bridge"}
+                    )
+                    url_request.urlopen(req, timeout=0.2)
+                except Exception:
+                    pass
         except Exception:
             pass
 

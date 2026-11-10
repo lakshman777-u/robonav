@@ -167,7 +167,10 @@ async def read_robot_status(robot_id: Optional[str] = None, current_user: Option
     status["connection_status"] = "ONLINE" if is_connected else ("ONLINE" if simulator.is_running else "OFFLINE")
     status["position"] = robot_state.position
     status["orientation"] = robot_state.orientation
-    status["trajectory"] = robot_state.current_path
+    status["trajectory"] = getattr(robot_state, "trajectory", robot_state.current_path)
+    status["slam_pose"] = slam_pose_state
+    status["localization_status"] = "LOCALIZED" if (slam_pose_state.get("localized") and (time.time() - slam_pose_state.get("last_seen", 0) < 3.0)) else ("MAPPING" if is_bridge_active else "IDLE")
+    status["slam_status"] = slam_pose_state.get("status", "SLAM_ACTIVE" if is_bridge_active else "IDLE")
     status["mpu9250"] = mpu9250_data
     status["ultrasonic"] = ultrasonic_data
     status["speed_control"] = speed_control_state
@@ -208,7 +211,10 @@ async def get_robot_telemetry(current_user: Optional[User] = Depends(get_optiona
         "velocity": robot_state.velocity,
         "position": robot_state.position,
         "orientation": robot_state.orientation,
-        "trajectory": robot_state.current_path,
+        "trajectory": getattr(robot_state, "trajectory", robot_state.current_path),
+        "slam_pose": slam_pose_state,
+        "localization_status": "LOCALIZED" if (slam_pose_state.get("localized") and (time.time() - slam_pose_state.get("last_seen", 0) < 3.0)) else ("MAPPING" if is_bridge_active else "IDLE"),
+        "slam_status": slam_pose_state.get("status", "SLAM_ACTIVE" if is_bridge_active else "IDLE"),
         "current_destination": robot_state.destination,
         "destination": robot_state.destination,
         "navigation_progress": getattr(robot_state, "navigation_progress", 0),
@@ -396,9 +402,71 @@ bridge_metrics: Dict[str, Any] = {
 
 latest_lidar_rays: list = []
 
+slam_pose_state: Dict[str, Any] = {
+    "x": 0.0,
+    "y": 0.0,
+    "orientation": 0.0,
+    "localized": False,
+    "frame_id": "map",
+    "status": "INITIALIZING_SLAM",
+    "last_seen": 0.0
+}
+
+class SlamPoseSyncReq(BaseModel):
+    x: float
+    y: float
+    orientation: float
+    localized: bool = True
+    frame_id: Optional[str] = "map"
+    status: Optional[str] = "SLAM_ACTIVE"
+    timestamp: Optional[float] = None
+
+@router.post("/api/robot/pose")
+async def sync_slam_pose(req: SlamPoseSyncReq):
+    """
+    Receives the authoritative scan-matched robot pose in the 'map' frame from SLAM Toolbox.
+    Guarantees that when the robot moves, new scans align with the fixed physical environment.
+    """
+    now = time.time()
+    slam_pose_state["x"] = req.x
+    slam_pose_state["y"] = req.y
+    slam_pose_state["orientation"] = req.orientation
+    slam_pose_state["localized"] = req.localized
+    slam_pose_state["frame_id"] = req.frame_id or "map"
+    slam_pose_state["status"] = req.status or "SLAM_ACTIVE"
+    slam_pose_state["last_seen"] = now
+
+    if req.localized:
+        robot_state.position = {"x": req.x, "y": req.y}
+        robot_state.orientation = req.orientation
+
+        # Maintain smooth trajectory breadcrumbs
+        if not hasattr(robot_state, "trajectory") or not robot_state.trajectory:
+            robot_state.trajectory = [{"x": req.x, "y": req.y}]
+        else:
+            last = robot_state.trajectory[-1]
+            if math.hypot(req.x - last["x"], req.y - last["y"]) > 0.04 or len(robot_state.trajectory) == 1:
+                robot_state.trajectory.append({"x": req.x, "y": req.y})
+                if len(robot_state.trajectory) > 500:
+                    robot_state.trajectory.pop(0)
+
+    # Broadcast authoritative SLAM pose to all connected browsers
+    await manager.broadcast_to_browsers({
+        "type": "slam_pose",
+        "data": {
+            "position": robot_state.position,
+            "orientation": robot_state.orientation,
+            "localized": req.localized,
+            "status": req.status,
+            "frame_id": req.frame_id or "map",
+            "trajectory": getattr(robot_state, "trajectory", [])
+        }
+    })
+    return {"status": "ok"}
+
 @router.post("/api/bridge/scan")
 async def ingest_bridge_scan(data: Dict[str, Any]):
-    """Receives decoded LiDAR scans from laptop_udp_receiver and updates 2D occupancy SLAM."""
+    """Receives decoded LiDAR scans from laptop_udp_receiver / ydlidar_direct_driver."""
     global latest_lidar_rays
     now = time.time()
     bridge_metrics["active"] = True
@@ -417,23 +485,22 @@ async def ingest_bridge_scan(data: Dict[str, Any]):
     points = data.get("points", [])
     if points:
         latest_lidar_rays = points
-        from app.services.lidar_odometry import lidar_odometry
-        from app.services.robot_service import robot_state
-        from app.services.mapping_service import process_lidar_points
-
-        # Real-time continuous LiDAR Odometry Tracking
-        if not lidar_odometry.is_tracking:
-            lidar_odometry.start(
-                robot_state.position.get("x", 0.0),
-                robot_state.position.get("y", 0.0),
-                robot_state.orientation
-            )
-        cur_x, cur_y, cur_ori = lidar_odometry.update(points)
-        robot_state.position = {"x": cur_x, "y": cur_y}
-        robot_state.orientation = cur_ori
-        robot_state.current_path = lidar_odometry.trajectory
-
-        process_lidar_points(points, robot_state.position, robot_state.orientation)
+        # If SLAM Toolbox is not yet publishing TF, keep a safe fallback for display
+        if not slam_pose_state["localized"] or (now - slam_pose_state["last_seen"] > 2.0):
+            from app.services.lidar_odometry import lidar_odometry
+            if not lidar_odometry.is_tracking:
+                lidar_odometry.start(
+                    robot_state.position.get("x", 0.0),
+                    robot_state.position.get("y", 0.0),
+                    robot_state.orientation
+                )
+            cur_x, cur_y, cur_ori = lidar_odometry.update(points)
+            robot_state.position = {"x": cur_x, "y": cur_y}
+            robot_state.orientation = cur_ori
+            robot_state.current_path = lidar_odometry.trajectory
+        # NOTE: We DO NOT call process_lidar_points here!
+        # The permanent occupancy map is strictly produced by ROS 2 SLAM Toolbox (/map)
+        # to guarantee zero overlapping walls or duplicate artifacts.
 
     # Always broadcast updated bridge telemetry and robot status to all browser clients
     from app.services.robot_service import robot_state

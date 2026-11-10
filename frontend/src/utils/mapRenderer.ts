@@ -77,30 +77,29 @@ export const initOccupancyCanvas = (
   const imgData = offscreenCtx.createImageData(width, height);
   const data = imgData.data;
 
-  // Pass 1: Explored free floor: Pure clean solid white (#ffffff)
+  // Tri-state occupancy mapping
   for (let i = 0; i < grid.length; i++) {
     const val = grid[i];
     const p = i * 4;
 
-    if (val === 0) {
-      data[p] = 255;
-      data[p + 1] = 255;
-      data[p + 2] = 255;
-      data[p + 3] = 255;
+    if (val >= 50) {
+      // Occupied walls & obstacles: High-contrast neon red (#ef4444)
+      data[p] = 239;     // R
+      data[p + 1] = 68;  // G
+      data[p + 2] = 68;  // B
+      data[p + 3] = 255; // A
+    } else if (val === 0) {
+      // Explored free floor: Sleek dark charcoal floor (#141824)
+      data[p] = 20;      // R
+      data[p + 1] = 24;  // G
+      data[p + 2] = 36;  // B
+      data[p + 3] = 255; // A
     } else {
-      // Unexplored space: transparent so the dark slate background shows through
-      data[p + 3] = 0;
-    }
-  }
-
-  // Pass 2: Slim crisp blue walls (#2563eb royal blue)
-  for (let i = 0; i < grid.length; i++) {
-    if (grid[i] >= 100) {
-      const p = i * 4;
-      data[p] = 37;      // R: 37
-      data[p + 1] = 99;  // G: 99
-      data[p + 2] = 235; // B: 235 (#2563eb royal blue)
-      data[p + 3] = 255;
+      // Unknown / Unexplored (-1): Distinct dark obsidian (#06080e)
+      data[p] = 6;       // R
+      data[p + 1] = 8;   // G
+      data[p + 2] = 14;  // B
+      data[p + 3] = 255; // A
     }
   }
 
@@ -117,24 +116,18 @@ export const updateOccupancyPixels = (
   ensureOffscreenCanvas(width, height);
   if (!offscreenCtx) return;
 
-  // 1. Explored free floor (pure clean solid white)
-  offscreenCtx.fillStyle = '#ffffff';
   for (let i = 0; i < updates.length; i++) {
     const u = updates[i];
     if (u.x < 0 || u.x >= width || u.y < 0 || u.y >= height) continue;
-    if (u.val === 0) {
-      offscreenCtx.fillRect(u.x, u.y, 1, 1);
+    
+    if (u.val >= 50) {
+      offscreenCtx.fillStyle = '#ef4444'; // Red wall
+    } else if (u.val === 0) {
+      offscreenCtx.fillStyle = '#141824'; // Explored charcoal floor
+    } else {
+      offscreenCtx.fillStyle = '#06080e'; // Unknown dark obsidian
     }
-  }
-
-  // 2. Slim crisp blue obstacle walls (#2563eb, 1 single pixel)
-  offscreenCtx.fillStyle = '#2563eb';
-  for (let i = 0; i < updates.length; i++) {
-    const u = updates[i];
-    if (u.x < 0 || u.x >= width || u.y < 0 || u.y >= height) continue;
-    if (u.val >= 100) {
-      offscreenCtx.fillRect(u.x, u.y, 1, 1);
-    }
+    offscreenCtx.fillRect(u.x, u.y, 1, 1);
   }
 };
 
@@ -168,8 +161,8 @@ export const drawGrid = (
   const totalW = width * cellPixelSize;
   const totalH = height * cellPixelSize;
 
-  // 1. Draw SLAM map background (clean neutral slate gray #1e293b, matching Image 2)
-  ctx.fillStyle = '#1e293b';
+  // 1. Draw SLAM map background (unexplored dark obsidian #06080e)
+  ctx.fillStyle = '#06080e';
   ctx.fillRect(offset.x, offset.y, totalW, totalH);
 
   // 2. Hardware-accelerated GPU draw of the STILL 2D diagram in 1 single blit (0.02ms)
@@ -179,16 +172,14 @@ export const drawGrid = (
     ctx.drawImage(oCanvas, offset.x, offset.y, totalW, totalH);
   }
 
-  // Subtle perimeter border
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+  // Subtle red perimeter border
+  ctx.strokeStyle = 'rgba(239, 68, 68, 0.25)';
   ctx.lineWidth = 1;
   ctx.strokeRect(offset.x, offset.y, totalW, totalH);
 };
 
-// Draw Live LiDAR Scan Reflection Dots (Bounce-Backed Area) for the CURRENT frame only.
-// When the robot moves from Point A to Point B, (robotX, robotY) updates,
-// so the dots continuously shift to the new points and NEVER remain behind.
-// The SLAM map itself only contains the stationary slim blue walls and white floor.
+// Draw Live LiDAR Scan Reflection Dots for the CURRENT frame only.
+// Red neon points shift dynamically with robot pose and never burn into the map.
 export const drawLiveLidarHits = (
   ctx: CanvasRenderingContext2D,
   robotX: number,
@@ -203,18 +194,20 @@ export const drawLiveLidarHits = (
   const rPos = worldToCanvas(robotX, robotY, scale, offset.x, offset.y);
 
   ctx.save();
-  // 1. Subtle, faint scan reflection lines from robot to bounce points
-  ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
-  ctx.lineWidth = 0.6;
+  // 1. Subtle, faint red laser sweep lines
+  ctx.strokeStyle = 'rgba(239, 68, 68, 0.08)';
+  ctx.lineWidth = 0.5;
 
-  // 2. Crisp bright cyan-blue bounce-backed dots
-  ctx.fillStyle = '#38bdf8';
+  // 2. Vivid Neon Red hit points (#ff2222) with red glow
+  ctx.fillStyle = '#ff2222';
+  ctx.shadowColor = '#ef4444';
+  ctx.shadowBlur = 4;
 
   for (let i = 0; i < rays.length; i++) {
     const ray = rays[i];
-    if (ray.distance < 0.15 || ray.distance > 8.0) continue;
+    if (ray.distance < 0.12 || ray.distance > 8.0) continue;
 
-    // Angle in world space: robotHeading + ray.angle
+    // Angle in world space: robotHeading + ray.angle (with motor facing north)
     const rad = ((robotHeading + ray.angle) * Math.PI) / 180;
     const wx = robotX + ray.distance * Math.cos(rad);
     const wy = robotY + ray.distance * Math.sin(rad);
@@ -227,9 +220,9 @@ export const drawLiveLidarHits = (
     ctx.lineTo(hitPos.x, hitPos.y);
     ctx.stroke();
 
-    // Crisp bounce-back reflection dot (2px)
+    // Crisp bounce-back reflection dot (2.2px)
     ctx.beginPath();
-    ctx.arc(hitPos.x, hitPos.y, 2.0, 0, 2 * Math.PI);
+    ctx.arc(hitPos.x, hitPos.y, 2.2, 0, 2 * Math.PI);
     ctx.fill();
   }
 
@@ -246,11 +239,10 @@ export const drawLidarScanRays = (
   scale: number,
   offset: { x: number; y: number }
 ) => {
-  // Delegate to live bounce-backed reflection dots shifting with robot position
   drawLiveLidarHits(ctx, robotX, robotY, robotHeading, rays, scale, offset);
 };
 
-// Draw Robot Chassis / LiDAR Puck, Turret, and Active LiDAR Heading Angle (Matching user image)
+// Draw Autonomous Robot Chassis / LiDAR Puck, Turret, and Forward Heading Pointer
 export const drawRobot = (
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -266,54 +258,62 @@ export const drawRobot = (
   ctx.translate(pos.x, pos.y);
   ctx.rotate(rad);
 
-  // Subtle active LiDAR scanning fan cone in front of the robot showing live LiDAR angle
-  const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, 38);
-  grad.addColorStop(0, 'rgba(6, 182, 212, 0.35)');
-  grad.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
+  // Subtle active LiDAR scanning fan cone in front of the robot (glowing red)
+  const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, 42);
+  grad.addColorStop(0, 'rgba(239, 68, 68, 0.35)');
+  grad.addColorStop(0.7, 'rgba(239, 68, 68, 0.10)');
+  grad.addColorStop(1, 'rgba(239, 68, 68, 0.0)');
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  ctx.arc(0, 0, 38, -Math.PI / 4, Math.PI / 4);
+  ctx.arc(0, 0, 42, -Math.PI / 4, Math.PI / 4);
   ctx.closePath();
   ctx.fillStyle = grad;
   ctx.fill();
   
-  // Sleek circular LiDAR puck body (Image 2)
+  // Sleek circular LiDAR puck body (dark obsidian with glowing red bezel)
   ctx.beginPath();
-  ctx.arc(0, 0, 11, 0, 2 * Math.PI);
-  ctx.fillStyle = '#0f172a';
+  ctx.arc(0, 0, 12, 0, 2 * Math.PI);
+  ctx.fillStyle = '#0f1117';
   ctx.fill();
-  ctx.strokeStyle = '#06b6d4';
+  ctx.strokeStyle = '#ef4444';
   ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#ef4444';
+  ctx.shadowBlur = 8;
   ctx.stroke();
+  ctx.shadowBlur = 0;
 
-  // Left & Right Wheels
-  ctx.fillStyle = '#1e293b';
-  ctx.fillRect(-6, -14, 12, 3);
-  ctx.fillRect(-6, 11, 12, 3);
+  // Left & Right Drive Wheel assemblies
+  ctx.fillStyle = '#1c1f2b';
+  ctx.fillRect(-7, -15, 14, 3.5);
+  ctx.fillRect(-7, 11.5, 14, 3.5);
+  ctx.strokeStyle = '#ef4444';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-7, -15, 14, 3.5);
+  ctx.strokeRect(-7, 11.5, 14, 3.5);
 
-  // Forward Heading Pointer (LiDAR angle arrow)
+  // Forward Heading Pointer (LiDAR angle arrow pointing forward +X)
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  ctx.lineTo(20, 0);
-  ctx.strokeStyle = '#00f0ff';
+  ctx.lineTo(22, 0);
+  ctx.strokeStyle = '#ff3344';
   ctx.lineWidth = 2.5;
   ctx.stroke();
 
-  // Arrowhead
+  // Arrowhead pointing forward
   ctx.beginPath();
-  ctx.moveTo(20, 0);
-  ctx.lineTo(13, -5);
-  ctx.lineTo(13, 5);
+  ctx.moveTo(22, 0);
+  ctx.lineTo(14, -6);
+  ctx.lineTo(14, 6);
   ctx.closePath();
-  ctx.fillStyle = '#00f0ff';
+  ctx.fillStyle = '#ff3344';
   ctx.fill();
 
   // Center YDLIDAR Turret with illuminated ruby diode core
   ctx.beginPath();
-  ctx.arc(0, 0, 4, 0, 2 * Math.PI);
-  ctx.fillStyle = '#f43f5e';
-  ctx.shadowColor = '#f43f5e';
-  ctx.shadowBlur = 6;
+  ctx.arc(0, 0, 4.5, 0, 2 * Math.PI);
+  ctx.fillStyle = '#ff0033';
+  ctx.shadowColor = '#ff0033';
+  ctx.shadowBlur = 8;
   ctx.fill();
   
   ctx.restore();
@@ -475,23 +475,27 @@ export const drawDestination = (
 ) => {
   const pos = worldToCanvas(x, y, scale, offset.x, offset.y);
   ctx.beginPath();
-  ctx.arc(pos.x, pos.y, 6, 0, 2 * Math.PI);
-  ctx.fillStyle = '#10b981';
+  ctx.arc(pos.x, pos.y, 6.5, 0, 2 * Math.PI);
+  ctx.fillStyle = '#ef4444';
+  ctx.shadowColor = '#ef4444';
+  ctx.shadowBlur = 10;
   ctx.fill();
-  ctx.strokeStyle = '#047857';
+  ctx.strokeStyle = '#ffffff';
   ctx.lineWidth = 2;
   ctx.stroke();
+  ctx.shadowBlur = 0;
 
   if (name) {
     ctx.save();
     ctx.font = 'bold 11px monospace';
-    ctx.fillStyle = '#67e8f9';
+    ctx.fillStyle = '#fca5a5';
     ctx.textAlign = 'center';
-    ctx.fillText(name, pos.x, pos.y - 10);
+    ctx.fillText(name, pos.x, pos.y - 12);
     ctx.restore();
   }
 };
 
+// Planned autonomous navigation path (High-tech red ribbon)
 export const drawPath = (
   ctx: CanvasRenderingContext2D,
   path: { x: number; y: number }[],
@@ -500,6 +504,7 @@ export const drawPath = (
 ) => {
   if (!path || path.length === 0) return;
   
+  ctx.save();
   ctx.beginPath();
   const startPos = worldToCanvas(path[0].x, path[0].y, scale, offset.x, offset.y);
   ctx.moveTo(startPos.x, startPos.y);
@@ -509,13 +514,17 @@ export const drawPath = (
     ctx.lineTo(pos.x, pos.y);
   }
   
-  ctx.strokeStyle = '#a855f7';
+  ctx.strokeStyle = '#ef4444';
   ctx.lineWidth = 2.5;
-  ctx.setLineDash([4, 4]);
+  ctx.shadowColor = '#ef4444';
+  ctx.shadowBlur = 6;
+  ctx.setLineDash([5, 4]);
   ctx.stroke();
   ctx.setLineDash([]);
+  ctx.restore();
 };
 
+// Real-time travel trajectory breadcrumb trail (Dark crimson dash)
 export const drawTrajectoryTrail = (
   ctx: CanvasRenderingContext2D,
   trajectory: { x: number; y: number }[],
@@ -531,10 +540,10 @@ export const drawTrajectoryTrail = (
     const pos = worldToCanvas(trajectory[i].x, trajectory[i].y, scale, offset.x, offset.y);
     ctx.lineTo(pos.x, pos.y);
   }
-  ctx.strokeStyle = '#c084fc';
-  ctx.lineWidth = 2.2;
-  ctx.shadowColor = '#c084fc';
-  ctx.shadowBlur = 8;
+  ctx.strokeStyle = 'rgba(220, 38, 38, 0.65)';
+  ctx.lineWidth = 2.0;
+  ctx.shadowColor = '#b91c1c';
+  ctx.shadowBlur = 6;
   ctx.setLineDash([4, 3]);
   ctx.stroke();
   ctx.restore();
@@ -550,7 +559,7 @@ export const drawLidarRays = (
 ) => {
   const startPos = worldToCanvas(robotX, robotY, scale, offset.x, offset.y);
 
-  ctx.strokeStyle = 'rgba(6, 182, 212, 0.08)';
+  ctx.strokeStyle = 'rgba(239, 68, 68, 0.08)';
   ctx.lineWidth = 0.5;
 
   rays.forEach(ray => {
@@ -568,7 +577,7 @@ export const drawLidarRays = (
   });
 };
 
-// Draw 1-Meter Grid Scale Guides and Room Dimensions on Canvas
+// Draw 1-Meter Grid Scale Guides and Room Dimensions on Canvas (Subtle Red Grid)
 export const drawMetricGuides = (
   ctx: CanvasRenderingContext2D,
   canvasW: number,
@@ -577,10 +586,10 @@ export const drawMetricGuides = (
   offset: { x: number; y: number }
 ) => {
   const cellPixelSize = 2.0 * scale;
-  const pixelsPerMeter = (1.0 / RESOLUTION) * cellPixelSize; // 40px at scale 1.0
+  const pixelsPerMeter = (1.0 / RESOLUTION) * cellPixelSize;
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+  ctx.strokeStyle = 'rgba(239, 68, 68, 0.06)';
   ctx.lineWidth = 1;
   ctx.setLineDash([2, 4]);
 
@@ -606,7 +615,7 @@ export const drawMetricGuides = (
   const rulerY = canvasH - 24;
   const rulerLen = pixelsPerMeter;
 
-  ctx.strokeStyle = '#00f0ff';
+  ctx.strokeStyle = '#ef4444';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(rulerX, rulerY);
@@ -619,7 +628,7 @@ export const drawMetricGuides = (
   ctx.stroke();
 
   ctx.font = 'bold 10px monospace';
-  ctx.fillStyle = '#67e8f9';
+  ctx.fillStyle = '#d1d5db'; // light grey labels
   ctx.textAlign = 'center';
   ctx.fillText('1.0 METER', rulerX + rulerLen / 2, rulerY - 6);
   ctx.restore();
